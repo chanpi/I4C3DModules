@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "I4C3DModules", "I4C3DModules\I4C3DModules.vcxproj", "{2505E5CD-00DD-4DD3-872E-2C71C26DCD90}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{CB5CD962-D211-4017-BA4D-B5BC2C2CE531}"
+	ProjectSection(SolutionItems) = preProject
+		パフォーマンス1.psess = パフォーマンス1.psess
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2505E5CD-00DD-4DD3-872E-2C71C26DCD90}.Debug|Win32.ActiveCfg = Debug|Win32
+		{2505E5CD-00DD-4DD3-872E-2C71C26DCD90}.Debug|Win32.Build.0 = Debug|Win32
+		{2505E5CD-00DD-4DD3-872E-2C71C26DCD90}.Release|Win32.ActiveCfg = Release|Win32
+		{2505E5CD-00DD-4DD3-872E-2C71C26DCD90}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
