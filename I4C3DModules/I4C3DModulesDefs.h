@@ -24,7 +24,7 @@ const PCSTR COMMAND_TUMBLE	= "tumble";
 const PCSTR COMMAND_TRACK	= "track";
 const PCSTR COMMAND_DOLLY	= "dolly";
 
-const PCTSTR TAG_TARGET		= _T("target");
+//const PCTSTR TAG_TARGET		= _T("target");
 
 typedef struct {
 	HANDLE hProcessorContextThread;
@@ -42,9 +42,7 @@ typedef struct {
 
 	HWND hTargetParentWnd;
 	I4C3DControl* pController;
-
 	HANDLE hThread;			// iPhone/iPodからの受信はワーカースレッドで行う
-
 	WSAEVENT hStopEvent;
 	SOCKET receiver;
 

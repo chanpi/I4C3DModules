@@ -3,19 +3,27 @@
 #include "I4C3DAnalyzeXML.h"
 #include "I4C3DMisc.h"
 #include "XMLParser.h"
+#include <vector>
 
 extern TCHAR szTitle[MAX_LOADSTRING];
 
 static IXMLDOMElement* g_pRootElement = NULL;
 static BOOL g_bInitialized = FALSE;
-static map<PCTSTR, PCTSTR>* g_pGlobalConfig = NULL;
-static map<PCTSTR, PCTSTR>* g_pSoftwareConfig = NULL;
+static map<PCTSTR, PCTSTR>* g_pGlobalConfig		= NULL;
+//static map<PCTSTR, PCTSTR>* g_pRTTConfig		= NULL;
+//static map<PCTSTR, PCTSTR>* g_pMayaConfig		= NULL;
+//static map<PCTSTR, PCTSTR>* g_pAliasConfig		= NULL;
+//static map<PCTSTR, PCTSTR>* g_pShowcaseConfig	= NULL;
+//static std::pair<PCTSTR, map<PCTSTR, PCTSTR>*> configSet = NULL;
+
+typedef pair<PCTSTR, map<PCTSTR, PCTSTR>*> config_pair;
+static vector<config_pair>* g_pConfigPair;
 
 static void CleanupRootElement(void);
 
-static const PCTSTR TAG_GLOBAL	= _T("global");
-static const PCTSTR TAG_SOFTS	= _T("softs");
-static const PCTSTR TAG_NAME	= _T("name");
+static const PCTSTR TAG_GLOBAL		= _T("global");
+static const PCTSTR TAG_SOFTS		= _T("softs");
+static const PCTSTR TAG_NAME		= _T("name");
 
 inline void SafeReleaseMap(map<PCTSTR, PCTSTR>* pMap)
 {
@@ -27,11 +35,17 @@ inline void SafeReleaseMap(map<PCTSTR, PCTSTR>* pMap)
 
 I4C3DAnalyzeXML::I4C3DAnalyzeXML(void)
 {
+	g_pConfigPair = new vector<config_pair>;
 }
 
 I4C3DAnalyzeXML::~I4C3DAnalyzeXML(void)
 {
 	CleanupRootElement();
+	if (g_pConfigPair) {
+		g_pConfigPair->clear();
+		delete g_pConfigPair;
+		g_pConfigPair = NULL;
+	}
 }
 
 /**
@@ -46,12 +60,23 @@ I4C3DAnalyzeXML::~I4C3DAnalyzeXML(void)
  * @see
  * ReadGlobalTag() | ReadSoftsTag()
  */
-static void CleanupRootElement(void)
+void CleanupRootElement(void)
 {
 	if (g_bInitialized) {
+		if (g_pConfigPair) {
+			int size = g_pConfigPair->size();
+			for (int i = 0; i < size; ++i) {
+				delete (*g_pConfigPair)[i].first;
+				map<PCTSTR, PCTSTR>* pMap = (*g_pConfigPair)[i].second;
+				SafeReleaseMap(pMap);
+				pMap = NULL;
+			}
+		}
 		SafeReleaseMap(g_pGlobalConfig);
-		SafeReleaseMap(g_pSoftwareConfig);
+		g_pGlobalConfig		= NULL;
+
 		UnInitialize(g_pRootElement);
+		g_pRootElement = NULL;
 		g_bInitialized = FALSE;
 	}
 }
@@ -123,18 +148,26 @@ PCTSTR I4C3DAnalyzeXML::GetGlobalValue(PCTSTR szKey)
  * @see
  * ReadGlobalTag() | ReadSoftsTag()
  */
-PCTSTR I4C3DAnalyzeXML::GetSoftValue(PCTSTR szKey)
+PCTSTR I4C3DAnalyzeXML::GetSoftValue(PCTSTR szSoftName, PCTSTR szKey)
 {
-	if (!this->ReadGlobalTag()) {
-		I4C3DMisc::ReportError(_T("[ERROR] globalタグの読み込みに失敗しています。"));
-		return NULL;
-	}
+	//if (!this->ReadGlobalTag()) {
+	//	I4C3DMisc::ReportError(_T("[ERROR] globalタグの読み込みに失敗しています。"));
+	//	return NULL;
+	//}
 	if (!this->ReadSoftsTag()) {
 		I4C3DMisc::ReportError(_T("[ERROR] softsタグの読み込みに失敗しています。"));
 		return NULL;
 	}
 
-	return GetMapItem(g_pSoftwareConfig, szKey);
+	if (g_pConfigPair) {
+		int size = g_pConfigPair->size();
+		for (int i = 0; i < size; ++i) {
+			if (_tcsicmp((*g_pConfigPair)[i].first, szSoftName) == 0) {
+				return GetMapItem((*g_pConfigPair)[i].second, szKey);
+			}
+		}
+	}
+	return NULL;
 }
 
 /**
@@ -187,20 +220,59 @@ BOOL I4C3DAnalyzeXML::ReadGlobalTag(void)
  * @see
  * GetSoftValue()
  */
+//BOOL I4C3DAnalyzeXML::ReadSoftsTag(void)
+//{
+//	BOOL bRet = FALSE;
+//	if (!this->ReadGlobalTag()) {
+//		I4C3DMisc::LogDebugMessage(Log_Error, _T("globalタグの読み込みに失敗しています。<I4C3DAnalyzeXML::ReadSoftsTag>"));
+//		return bRet;
+//	}
+//
+//	if (g_pSoftwareConfig == NULL) {
+//		IXMLDOMNode* pSofts = NULL;
+//		IXMLDOMNodeList* pSoftsList = NULL;
+//		if (!GetDOMTree(g_pRootElement, TAG_SOFTS, &pSofts)) {
+//			I4C3DMisc::LogDebugMessage(Log_Error, _T("softsタグのDOM取得に失敗しています。<I4C3DAnalyzeXML::ReadSoftsTag>"));
+//			return bRet;
+//		}
+//
+//		LONG childCount = GetChildList(pSofts, &pSoftsList);
+//		for (int i = 0; i < childCount; i++) {
+//			IXMLDOMNode* pTempNode = NULL;
+//			if (GetListItem(pSoftsList, i, &pTempNode)) {
+//				TCHAR szSoftwareName[I4C3D_BUFFER_SIZE] = {0};
+//				if (GetAttribute(pTempNode, TAG_NAME, szSoftwareName, _countof(szSoftwareName))) {
+//
+//					// globalタグのターゲット名と比較
+//					if (!_tcsicmp(szSoftwareName,  this->GetGlobalValue(TAG_TARGET))) {
+//						g_pSoftwareConfig = StoreValues(pTempNode, TAG_NAME);
+//						FreeListItem(pTempNode);
+//						bRet = TRUE;
+//						break;
+//					}
+//
+//				}
+//				FreeListItem(pTempNode);
+//			}
+//		}
+//
+//		FreeChildList(pSoftsList);
+//		FreeDOMTree(pSofts);
+//	} else {
+//		bRet = TRUE;
+//	}
+//	return bRet;
+//}
+
 BOOL I4C3DAnalyzeXML::ReadSoftsTag(void)
 {
-	BOOL bRet = FALSE;
-	if (!this->ReadGlobalTag()) {
-		I4C3DMisc::LogDebugMessage(Log_Error, _T("globalタグの読み込みに失敗しています。<I4C3DAnalyzeXML::ReadSoftsTag>"));
-		return bRet;
-	}
+	if (g_pConfigPair->size() == 0) {
 
-	if (g_pSoftwareConfig == NULL) {
 		IXMLDOMNode* pSofts = NULL;
 		IXMLDOMNodeList* pSoftsList = NULL;
 		if (!GetDOMTree(g_pRootElement, TAG_SOFTS, &pSofts)) {
 			I4C3DMisc::LogDebugMessage(Log_Error, _T("softsタグのDOM取得に失敗しています。<I4C3DAnalyzeXML::ReadSoftsTag>"));
-			return bRet;
+			return FALSE;
 		}
 
 		LONG childCount = GetChildList(pSofts, &pSoftsList);
@@ -211,13 +283,11 @@ BOOL I4C3DAnalyzeXML::ReadSoftsTag(void)
 				if (GetAttribute(pTempNode, TAG_NAME, szSoftwareName, _countof(szSoftwareName))) {
 
 					// globalタグのターゲット名と比較
-					if (!_tcsicmp(szSoftwareName,  this->GetGlobalValue(TAG_TARGET))) {
-						g_pSoftwareConfig = StoreValues(pTempNode, TAG_NAME);
-						FreeListItem(pTempNode);
-						bRet = TRUE;
-						break;
-					}
-
+					TCHAR* pSoftwareName = new TCHAR[_tcslen(szSoftwareName)+1];
+					_tcscpy_s(pSoftwareName, _tcslen(szSoftwareName)+1, szSoftwareName);
+					g_pConfigPair->push_back(config_pair(pSoftwareName, StoreValues(pTempNode, TAG_NAME)));
+					OutputDebugString(szSoftwareName);
+					OutputDebugString(L" push_back\n");
 				}
 				FreeListItem(pTempNode);
 			}
@@ -225,8 +295,6 @@ BOOL I4C3DAnalyzeXML::ReadSoftsTag(void)
 
 		FreeChildList(pSoftsList);
 		FreeDOMTree(pSofts);
-	} else {
-		bRet = TRUE;
 	}
-	return bRet;
+	return TRUE;
 }

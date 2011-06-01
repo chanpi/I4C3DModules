@@ -6,28 +6,20 @@
 #include "I4C3DMisc.h"
 #include "I4C3DCore.h"
 #include "I4C3DAnalyzeXML.h"
-
-#include "I4C3DRTTControl.h"
-#include "I4C3DMAYAControl.h"
-#include "I4C3DAliasControl.h"
-#include "I4C3DSHOWCASEControl.h"
-
-static PCTSTR TAG_WINDOWTITLE	= _T("window_title");
-static PCTSTR g_szRTT			= _T("RTT");
-static PCTSTR g_szMAYA		= _T("MAYA");
-static PCTSTR g_szAlias		= _T("Alias");
-static PCTSTR g_szSHOWCASE	= _T("SHOWCASE");
+#include "I4C3DControl.h"
 
 static I4C3DContext g_Context = {0};
 static I4C3DCore g_Core;
 static BOOL g_bStarted = FALSE;
 
-static HWND g_targetWindow = NULL;
-static BOOL CALLBACK EnumWindowProc(HWND hWnd, LPARAM lParam);
+//static HWND g_targetWindow = NULL;
+//static BOOL CALLBACK EnumWindowProc(HWND hWnd, LPARAM lParam);
 
-static BOOL SelectTarget(PCTSTR szTargetWindowTitle);
-static HWND GetTarget3DSoftwareWnd(PCTSTR szTargetWindowTitle);
-static BOOL SelectTargetController(PCTSTR szTargetSoftware);
+//static BOOL SelectTarget(PCTSTR szTargetWindowTitle);
+//static HWND GetTarget3DSoftwareWnd(PCTSTR szTargetWindowTitle);
+static BOOL PrepareTargetController(char cTermination);
+static void DestroyTargetController();
+static const PCTSTR TAG_TERMINATION	= _T("termination");
 
 /**
  * @brief
@@ -71,13 +63,30 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri, PCTSTR szTargetWindowTitle)
 		return FALSE;
 	}
 	I4C3DMisc::LogInitialize(g_Context.pAnalyzer);
-	if (!SelectTarget(szTargetWindowTitle)) {
-		I4C3DMisc::ReportError(_T("[ERROR] ターゲットウィンドウが取得できません。初期化は行われません。"));
+
+	// 設定ファイルから終端文字を取得
+	char cTermination = '?';
+	PCTSTR szTermination = g_Context.pAnalyzer->GetGlobalValue(TAG_TERMINATION);
+	if (szTermination != NULL) {
+		char cszTermination[5];
+		if (_tcslen(szTermination) != 1) {
+			I4C3DMisc::LogDebugMessage(Log_Error, _T("設定ファイルの終端文字の指定に誤りがあります。1文字で指定してください。'?'に仮指定されます"));
+			szTermination = _T("?");
+		}
+#if UNICODE || _UNICODE
+		WideCharToMultiByte(CP_ACP, 0, szTermination, _tcslen(szTermination), cszTermination, sizeof(cszTermination), NULL, NULL);
+#else
+		strcpy_s(cszTermination, sizeof(cszTermination), szTermination);
+#endif
+		I4C3DMisc::RemoveWhiteSpaceA(cszTermination);
+		cTermination = cszTermination[0];
+	}
+
+	if (!PrepareTargetController(cTermination)) {
 		I4C3DStop();
 		return FALSE;
 	}
 
-	g_Context.bIsAlive = FALSE;
 	g_bStarted = g_Core.Start(&g_Context);
 	if (!g_bStarted) {
 		I4C3DStop();
@@ -109,88 +118,10 @@ void WINAPI I4C3DStop(void)
 		delete g_Context.pController;
 		g_Context.pController = NULL;
 	}
+	DestroyTargetController();
+	g_Context.bIsAlive = FALSE;
 	g_bStarted = FALSE;
-	g_targetWindow = NULL;
-}
-
-
-/////////////////////////////////////////////////
-
-/**
- * @brief
- * 対象の3Dソフトウェアの取得と、ウィンドウハンドルの取得を行います。
- * 
- * @param szTargetWindowTitle
- * 指定のウィンドウタイトルがある場合にはここに指定してください（タイトルの一部であっても、区別できるなら可能）。
- * NULLの場合には設定ファイルの"window_title"の値から取得を試みます。
- * 
- * @returns
- * 対象ウィンドウの取得に成功した場合にはTRUE、失敗した場合にはFALSEを返します。
- * 
- * 対象の3Dソフトウェアの取得と、ウィンドウハンドルの取得を行います。
- * 
- * @remarks
- * 実際に取得を行うのはGetTarget3DSoftwareWnd()です。
- * 
- * @see
- * GetTarget3DSoftwareWnd()
- */
-BOOL SelectTarget(PCTSTR szTargetWindowTitle)
-{
-	// ターゲットソフトの取得
-	PCTSTR szTargetSoftware = g_Context.pAnalyzer->GetGlobalValue(TAG_TARGET);
-	if (!szTargetSoftware) {
-		I4C3DMisc::LogDebugMessage(Log_Error, _T("設定ファイルにターゲットソフトを指定してください。<I4C3DModules::SelectTarget>"));
-		return FALSE;
-	}
-
-	// ウィンドウタイトルの指定がない場合には設定ファイルの"window_title"タグから取得
-	if (szTargetWindowTitle == NULL) {
-		szTargetWindowTitle = g_Context.pAnalyzer->GetSoftValue(TAG_WINDOWTITLE);
-	}
-
-	if (szTargetWindowTitle != NULL) {
-		g_Context.hTargetParentWnd = GetTarget3DSoftwareWnd(szTargetWindowTitle);
-	} else {
-		I4C3DMisc::LogDebugMessage(Log_Error, _T("設定ファイルもしくはパラメータにターゲットウィンドウ名を指定してください。<I4C3DModules::SelectTarget>"));
-		return FALSE;
-		//I4C3DMisc::LogDebugMessage(Log_Debug, _T("window_titleがNULLのため、ターゲット名で検索します。<I4C3DModules::SelectTarget>"));
-		//g_Context.hTargetParentWnd = GetTarget3DSoftwareWnd(szTargetSoftware);
-	}
-
-	if (g_Context.hTargetParentWnd != NULL) {
-		if (SelectTargetController(szTargetSoftware)) {
-			return TRUE;
-		}
-	}
-
-	return FALSE;
-}
-
-/**
- * @brief
- * 対象のウィンドウハンドルを取得します。
- * 
- * @param szTargetWindowTitle
- * 対象ウィンドウのタイトル（の一部）。
- * 
- * @returns
- * 取得できた場合にはウィンドウハンドル、失敗した場合にはNULLが返ります。
- * 
- * 対象のウィンドウハンドルを取得します。
- * 
- * @remarks
- * ウィンドウタイトルに重複が起こる場合があり、その場合は誤ったウィンドウハンドルが取得されることが予想されます。
- * ウィンドウタイトルはできるだけ詳細に指定する必要があります。
- */
-HWND GetTarget3DSoftwareWnd(PCTSTR szTargetWindowTitle)
-{
-	if (szTargetWindowTitle == NULL) {
-		I4C3DMisc::LogDebugMessage(Log_Error, _T("szTargetWindowTitle is NULL. <I4C3DModules::GetTarget3DSoftwareWnd>"));
-		return NULL;
-	}
-	EnumWindows(&EnumWindowProc, (LPARAM)szTargetWindowTitle);
-	return g_targetWindow;
+	//g_targetWindow = NULL;
 }
 
 /**
@@ -213,35 +144,16 @@ HWND GetTarget3DSoftwareWnd(PCTSTR szTargetWindowTitle)
  * （動的に取得したウィンドウタイトルからどの3Dソフトウェア[どのController]かを判断する必要がある）。
  * 
  */
-BOOL SelectTargetController(PCTSTR szTargetSoftware)
+BOOL PrepareTargetController(char cTermination)
 {
 	if (g_Context.pController != NULL) {
 		delete g_Context.pController;
 		g_Context.pController = NULL;
 	}
-	if (!_tcsicmp(szTargetSoftware, g_szRTT)) {
-		g_Context.pController = new I4C3DRTTControl;
-		I4C3DMisc::LogDebugMessage(Log_Debug, _T("new I4C3DRTTControl <I4C3DModules::SelectTargetController>"));
-
-	} else if (!_tcsicmp(szTargetSoftware, g_szMAYA)) {
-		g_Context.pController = new I4C3DMAYAControl;
-		I4C3DMisc::LogDebugMessage(Log_Debug, _T("new I4C3DMAYAControl <I4C3DModules::SelectTargetController>"));
-
-	} else if (!_tcsicmp(szTargetSoftware, g_szAlias)) {
-		g_Context.pController = new I4C3DAliasControl;
-		I4C3DMisc::LogDebugMessage(Log_Debug, _T("new I4C3DAliasControl <I4C3DModules::SelectTargetController>"));
-
-	} else if (!_tcsicmp(szTargetSoftware, g_szSHOWCASE)) {
-		g_Context.pController = new I4C3DSHOWCASEControl;
-		I4C3DMisc::LogDebugMessage(Log_Debug, _T("new I4C3DSHOWCASEControl <I4C3DModules::SelectTargetController>"));
-
-	} else {
-		I4C3DMisc::LogDebugMessage(Log_Error, _T("不明なターゲットソフトが指定されました。<I4C3DModules::SelectTargetController>"));
-		return FALSE;
-	}
-
+	g_Context.pController = new I4C3DControl;
+	
 	// 初期化
-	if (g_Context.pController == NULL || !g_Context.pController->Initialize(&g_Context)) {
+	if (g_Context.pController == NULL || !g_Context.pController->Initialize(&g_Context, cTermination)) {
 		I4C3DMisc::LogDebugMessage(Log_Error, _T("コントローラの初期化に失敗しています。<I4C3DModules::SelectTargetController>"));
 		return FALSE;
 	}
@@ -249,14 +161,9 @@ BOOL SelectTargetController(PCTSTR szTargetSoftware)
 	return TRUE;
 }
 
-BOOL CALLBACK EnumWindowProc(HWND hWnd, LPARAM lParam)
+void DestroyTargetController()
 {
-	TCHAR szTitle[MAX_PATH] = {0};
-	GetWindowText(hWnd, szTitle, _countof(szTitle));
-	if (_tcsstr(szTitle, (PCTSTR)lParam) != NULL) {
-		g_targetWindow = hWnd;
-		I4C3DMisc::LogDebugMessage(Log_Debug, szTitle);
-		return FALSE;	// EnumWindowを中断
+	if (g_Context.pController != NULL) {
+		g_Context.pController->UnInitialize();
 	}
-	return TRUE;		// EnumWindowを継続
 }

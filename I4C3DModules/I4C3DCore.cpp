@@ -60,8 +60,10 @@ inline void SafeStopEventAndCloseHandle(HANDLE hEvent, HANDLE* hThreads, int thr
 	if (hEvent != NULL) {
 		SetEvent(hEvent);
 		for (int i = 0; i < threadCount; i++) {
-			WaitForSingleObject(hThreads[i], INFINITE);
-			SafeCloseHandle(hThreads[i]);
+			if (hThreads[i] != NULL) {
+				WaitForSingleObject(hThreads[i], INFINITE);
+				SafeCloseHandle(hThreads[i]);
+			}
 		}
 		SafeCloseHandle(hEvent);
 	}
@@ -99,10 +101,10 @@ BOOL I4C3DCore::Start(I4C3DContext* pContext) {
 		return TRUE;
 	}
 
-	pContext->bIsAlive = TRUE;	// 必要
+	pContext->bIsAlive = TRUE;	// Initialize時にpContext->bIsAliveがTRUEの必要がある
 
 	pContext->bIsAlive = Initialize(pContext);
-	if ( !pContext->bIsAlive ) {
+	if (!pContext->bIsAlive) {
 		UnInitialize(pContext);
 	}
 	return pContext->bIsAlive;
@@ -126,9 +128,10 @@ BOOL I4C3DCore::Start(I4C3DContext* pContext) {
  */
 BOOL I4C3DCore::Initialize(I4C3DContext* pContext)
 {
-	if ( !InitializeProcessorContext(pContext) ) {
-		return FALSE;
-	}
+	pContext->processorContext.bIsBusy = FALSE;
+	//if ( !InitializeProcessorContext(pContext) ) {
+	//	return FALSE;
+	//}
 	if ( !InitializeMainContext(pContext) ) {
 		return FALSE;
 	}
@@ -191,7 +194,7 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 
 	// iPhone待ち受けスタート
 	I4C3DAccessor accessor;
-	pContext->receiver = accessor.InitializeSocket(NULL, uBridgePort, nTimeoutMilisec, FALSE, g_backlog);
+	pContext->receiver = accessor.InitializeTCPSocket(NULL, uBridgePort, nTimeoutMilisec, FALSE, g_backlog);
 	if (pContext->receiver == INVALID_SOCKET) {
 		I4C3DMisc::LogDebugMessage(Log_Error, _T("InitializeSocket <I4C3DCore::Start>"));
 		return FALSE;
@@ -273,7 +276,7 @@ BOOL I4C3DCore::InitializeProcessorContext(I4C3DContext* pContext)
 		SafeCloseHandle(pContext->processorContext.hProcessorStopEvent);
 		return FALSE;
 	}
-	// CPU使用率によってSleepの間隔を調整するスレッド
+	// CPU使用率を測りながら使用率によってSleepの間隔を調整するスレッド
 	pContext->processorContext.hProcessorMonitorThread = (HANDLE)_beginthreadex(NULL, 0, I4C3DProcessorMonitorThreadProc, pContext, CREATE_SUSPENDED, NULL);
 	if (pContext->processorContext.hProcessorMonitorThread == INVALID_HANDLE_VALUE) {
 		_stprintf_s(szError, _countof(szError), _T("[ERROR] _beginthreadex() : %d"), GetLastError());
@@ -498,6 +501,7 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 
 		} else if (dwResult - WSA_WAIT_EVENT_0 == 1) {
 			CloseAllChildThreadHandle();
+			pContext->pController->Execute("exit", 5);
 			break;
 		}
 	}
@@ -561,17 +565,12 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 		}
 
 		do {
+			Sleep(0);
 			dwResult = WSAWaitForMultipleEvents(2, hEventArray, FALSE, pChildContext->dwWaitMillisec, FALSE);	// TODO
 			if (dwResult - WSA_WAIT_EVENT_0 != 0) {
-				pChildContext->pContext->pController->ModKeyUp();
+				//pChildContext->pContext->pController->ModKeyUp();
 			}
 		} while (dwResult == WSA_WAIT_TIMEOUT);
-
-		if (g_ullAccessLimit < g_ullAccess) {
-			continue;
-		}
-					
-		InterlockedIncrement(&g_ullAccess);
 
 		DEBUG_PROFILE_MONITOR;
 
@@ -591,17 +590,33 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 				break;
 
 			} else if (events.lNetworkEvents & FD_READ) {
+				static volatile ULONGLONG counter = 0;
+				InterlockedIncrement(&counter);
+
 				WSAResetEvent(hEvent);
+
+				if (g_ullAccessLimit < g_ullAccess) {
+					OutputDebugString(_T("Too mush accesses!!!!!!!\n"));
+					continue;
+				}
+				
+				//if (pChildContext->pContext->processorContext.bIsBusy) {
+				//	continue;
+				//}
+
+				InterlockedIncrement(&g_ullAccess);
 
 				nBytes = recv(pChildContext->clientSocket, recvBuffer + totalRecvBytes, sizeof(recvBuffer) - totalRecvBytes, 0);
 
 				if (nBytes == SOCKET_ERROR) {
 					_stprintf_s(szError, _countof(szError), _T("[ERROR] recv : %d"), WSAGetLastError());
 					I4C3DMisc::ReportError(szError);
+					InterlockedDecrement(&g_ullAccess);
 					break;
 
-				} else if (pChildContext->pContext->processorContext.bIsBusy) {
+				} else if (pChildContext->pContext->processorContext.bIsBusy && counter % 2 == 0) {
 					InterlockedDecrement(&g_ullAccess);
+					OutputDebugString(_T("remove\n"));
 					continue;
 
 				} else if (nBytes > 0) {
@@ -625,17 +640,24 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 
 						// 電文解析
 						delta.x = delta.y = 0;
-						int ret = AnalyzeMessage(recvBuffer, szCommand, sizeof(szCommand), &delta, pChildContext->cTermination);
-						if (ret == 3) {
-							pChildContext->pContext->pController->Execute(pChildContext->pContext, &delta, szCommand);
+						//int ret = AnalyzeMessage(recvBuffer, szCommand, sizeof(szCommand), &delta, pChildContext->cTermination);
+						//if (ret == 3) {
+							// Tumble/Track/Dolly
+							//EnterCriticalSection(&g_Lock);
+							pChildContext->pContext->pController->Execute(recvBuffer, totalRecvBytes);
+							//LeaveCriticalSection(&g_Lock);
+							Sleep(0);
 
-						} else {
-							DEBUG_PROFILE_MONITOR;
-							MoveMemory(szCommand, recvBuffer, pTermination-recvBuffer);
-							szCommand[pTermination-recvBuffer] = '\0';
-							pChildContext->pContext->pController->Execute(pChildContext->pContext, &delta, szCommand);
-							DEBUG_PROFILE_MONITOR;
-						}
+						//} else {
+						//	// Hotkey
+						//	DEBUG_PROFILE_MONITOR;
+						//	MoveMemory(szCommand, recvBuffer, pTermination-recvBuffer);
+						//	szCommand[pTermination-recvBuffer] = '\0';
+						//	EnterCriticalSection(&g_Lock);
+						//	pChildContext->pContext->pController->Execute(pChildContext->pContext, &delta, szCommand);
+						//	LeaveCriticalSection(&g_Lock);
+						//	DEBUG_PROFILE_MONITOR;
+						//}
 
 						if (pTermination == recvBuffer + totalRecvBytes - 1) {
 							FillMemory(recvBuffer, sizeof(recvBuffer), 0xFF);
@@ -672,7 +694,6 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 		}
 
 	}
-	InterlockedDecrement(&g_ullAccess);
 	WSACloseEvent(hEvent);
 	//{
 	//	TCHAR szBuf[64];

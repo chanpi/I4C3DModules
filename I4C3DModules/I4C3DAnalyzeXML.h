@@ -10,7 +10,7 @@ public:
 	BOOL LoadXML(PCTSTR szXMLUri);
 
 	PCTSTR GetGlobalValue(PCTSTR szKey);
-	PCTSTR GetSoftValue(PCTSTR szKey);
+	PCTSTR GetSoftValue(PCTSTR szSoftName, PCTSTR szKey);
 
 private:
 	BOOL ReadGlobalTag(void);

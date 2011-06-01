@@ -10,6 +10,7 @@ static const PCTSTR TAG_SLEEP				= _T("sleep");
 
 I4C3DSHOWCASEControl::I4C3DSHOWCASEControl(void)
 {
+	//m_reduceCount = 2;
 }
 
 I4C3DSHOWCASEControl::~I4C3DSHOWCASEControl(void)
@@ -26,6 +27,26 @@ BOOL I4C3DSHOWCASEControl::GetTargetChildWnd(void)
 	return TRUE;
 }
 
+void I4C3DSHOWCASEControl::TumbleExecute(int deltaX, int deltaY)
+{
+	//static int counter = 0;
+	//if (counter++ % 2 == 0) {
+		I4C3DControl::TumbleExecute(deltaX, deltaY);
+	//}
+}
+
+void I4C3DSHOWCASEControl::TrackExecute(int deltaX, int deltaY)
+{
+	//static int counter = 0;
+	//if (counter++ % 2 == 0) {
+		I4C3DControl::TrackExecute(deltaX, deltaY);
+	//}
+}
+
+void I4C3DSHOWCASEControl::DollyExecute(int deltaX, int deltaY)
+{
+	I4C3DControl::DollyExecute(deltaX, deltaY);
+}
 
 void I4C3DSHOWCASEControl::HotkeyExecute(I4C3DContext* pContext, PCTSTR szCommand)
 {
@@ -36,7 +57,6 @@ void I4C3DSHOWCASEControl::ModKeyDown(void)
 {
 	if (!m_bSyskeyDown) {
 		I4C3DControl::ModKeyDown(m_hTargetChildWnd);
-		//Sleep(m_millisecSleepAfterKeyDown);
 		// キー入力チェック！
 		if ( !IsModKeysDown() ) {
 			TCHAR szError[I4C3D_BUFFER_SIZE];

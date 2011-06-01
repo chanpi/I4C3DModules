@@ -34,6 +34,14 @@ unsigned int __stdcall I4C3DProcessorContextThreadProc(void *pParam)
 
 	while (pContext->bIsAlive && WaitForSingleObject(pContext->processorContext.hProcessorStopEvent, 0) == WAIT_TIMEOUT) {
 		pContext->processorContext.bIsBusy = TRUE;
+
+#if DEBUG || _DEBUG
+		if (pContext->processorContext.uNapTime > 0) {
+			TCHAR szBuf[32];
+			_stprintf_s(szBuf, 32, L"%d msec sleep\n", pContext->processorContext.uNapTime);
+			OutputDebugString(szBuf);
+		}
+#endif
 		Sleep(pContext->processorContext.uNapTime);
 		pContext->processorContext.bIsBusy = FALSE;
 		Sleep(pContext->processorContext.uCoreTime);
@@ -110,10 +118,13 @@ unsigned int __stdcall I4C3DProcessorMonitorThreadProc(void *pParam)
 		for (i = 0; i < sysInfo.dwNumberOfProcessors; i++) {
 			if (fmtValues[i].doubleValue > pContext->processorContext.uThreshouldOfBusy) {
 				pContext->processorContext.uNapTime += 10;
+				if (pContext->processorContext.uNapTime > 100) {
+					pContext->processorContext.uNapTime = 100;
+				}
 			}
 		}
 		if (pContext->processorContext.uNapTime > 0) {
-			pContext->processorContext.uNapTime--;
+			pContext->processorContext.uNapTime -= 2;
 		}
 	}
 

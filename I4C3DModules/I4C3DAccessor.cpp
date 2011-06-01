@@ -37,7 +37,7 @@ I4C3DAccessor::~I4C3DAccessor(void)
  * 
  * 受信タイムアウト指定付のTCPソケットを作成します。
  */
-SOCKET I4C3DAccessor::InitializeSocket(LPCSTR szAddress, USHORT uPort, int nTimeoutMilisec, BOOL bSend, int backlog) {
+SOCKET I4C3DAccessor::InitializeTCPSocket(LPCSTR szAddress, USHORT uPort, int nTimeoutMilisec, BOOL bSend, int backlog) {
 	SOCKET socketHandler;
 	SOCKADDR_IN address;
 	TCHAR szError[I4C3D_BUFFER_SIZE];
@@ -96,5 +96,23 @@ SOCKET I4C3DAccessor::InitializeSocket(LPCSTR szAddress, USHORT uPort, int nTime
 		}
 	}
 
+	return socketHandler;
+}
+
+SOCKET I4C3DAccessor::InitializeUDPSocket(SOCKADDR_IN* pAddress,  LPCSTR szAddress, USHORT uPort)
+{
+	SOCKET socketHandler = INVALID_SOCKET;
+	TCHAR szError[I4C3D_BUFFER_SIZE];
+
+	socketHandler = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (socketHandler == INVALID_SOCKET) {
+		_stprintf_s(szError, _countof(szError), _T("[ERROR] socket() : %d"), WSAGetLastError());
+		I4C3DMisc::ReportError(szError);
+		I4C3DMisc::LogDebugMessage(Log_Error, szError);
+		return socketHandler;
+	}
+	pAddress->sin_family = AF_INET;
+	pAddress->sin_port = htons(uPort);
+	pAddress->sin_addr.S_un.S_addr = inet_addr(szAddress);
 	return socketHandler;
 }

@@ -56,7 +56,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;I4C3DMODULES_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <EnablePREfast>true</EnablePREfast>
-      <AdditionalIncludeDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DDriver\I4C3DDriver;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\XMLParser\XMLParser;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\VirtualMotion\VirtualMotion;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -74,7 +74,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;I4C3DMODULES_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <EnablePREfast>true</EnablePREfast>
-      <AdditionalIncludeDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DDriver\I4C3DDriver;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\XMLParser\XMLParser;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\VirtualMotion\VirtualMotion;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -91,17 +91,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="I4C3DAccessor.h" />
-    <ClInclude Include="I4C3DAliasControl.h" />
     <ClInclude Include="I4C3DAnalyzeXML.h" />
     <ClInclude Include="I4C3DControl.h" />
     <ClInclude Include="I4C3DCore.h" />
     <ClInclude Include="I4C3DLoadMonitor.h" />
-    <ClInclude Include="I4C3DMAYAControl.h" />
     <ClInclude Include="I4C3DMisc.h" />
     <ClInclude Include="I4C3DModules.h" />
     <ClInclude Include="I4C3DModulesDefs.h" />
-    <ClInclude Include="I4C3DRTTControl.h" />
-    <ClInclude Include="I4C3DSHOWCASEControl.h" />
+    <ClInclude Include="I4C3DSoftwareHandler.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
@@ -116,16 +113,13 @@
       </PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="I4C3DAccessor.cpp" />
-    <ClCompile Include="I4C3DAliasControl.cpp" />
     <ClCompile Include="I4C3DAnalyzeXML.cpp" />
     <ClCompile Include="I4C3DControl.cpp" />
     <ClCompile Include="I4C3DCore.cpp" />
     <ClCompile Include="I4C3DLoadMonitor.cpp" />
-    <ClCompile Include="I4C3DMAYAControl.cpp" />
     <ClCompile Include="I4C3DMisc.cpp" />
     <ClCompile Include="I4C3DModules.cpp" />
-    <ClCompile Include="I4C3DRTTControl.cpp" />
-    <ClCompile Include="I4C3DSHOWCASEControl.cpp" />
+    <ClCompile Include="I4C3DSoftwareHandler.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>

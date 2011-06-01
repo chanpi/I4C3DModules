@@ -27,7 +27,7 @@ public:
 	static void DebugProfileMonitor(PCSTR position);
 
 private:
-	static BOOL I4C3DMisc::PrepareLogFile(PWSTR szFileName, SIZE_T cchLength, PCSTR szExtension);
+	static BOOL PrepareLogFile(PWSTR szFileName, SIZE_T cchLength, PCSTR szExtension);
 };
 
 #if defined UNICODE || _UNICODE
