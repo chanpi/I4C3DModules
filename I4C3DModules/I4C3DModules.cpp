@@ -151,7 +151,7 @@ BOOL PrepareTargetController(char cTermination)
 		g_Context.pController = NULL;
 	}
 	g_Context.pController = new I4C3DControl;
-	
+
 	// 初期化
 	if (g_Context.pController == NULL || !g_Context.pController->Initialize(&g_Context, cTermination)) {
 		I4C3DMisc::LogDebugMessage(Log_Error, _T("コントローラの初期化に失敗しています。<I4C3DModules::SelectTargetController>"));
