@@ -1,7 +1,7 @@
 #include "StdAfx.h"
 #include "I4C3DModulesDefs.h"
 #include "I4C3DAnalyzeXML.h"
-#include "I4C3DMisc.h"
+#include "Miscellaneous.h"
 #include "XMLParser.h"
 #include <vector>
 
@@ -10,14 +10,8 @@ extern TCHAR szTitle[MAX_LOADSTRING];
 static IXMLDOMElement* g_pRootElement = NULL;
 static BOOL g_bInitialized = FALSE;
 static map<PCTSTR, PCTSTR>* g_pGlobalConfig		= NULL;
-//static map<PCTSTR, PCTSTR>* g_pRTTConfig		= NULL;
-//static map<PCTSTR, PCTSTR>* g_pMayaConfig		= NULL;
-//static map<PCTSTR, PCTSTR>* g_pAliasConfig		= NULL;
-//static map<PCTSTR, PCTSTR>* g_pShowcaseConfig	= NULL;
-//static std::pair<PCTSTR, map<PCTSTR, PCTSTR>*> configSet = NULL;
-
 typedef pair<PCTSTR, map<PCTSTR, PCTSTR>*> config_pair;
-static vector<config_pair>* g_pConfigPair;
+static vector<config_pair>* g_pConfigPairContainer;
 
 static void CleanupRootElement(void);
 
@@ -35,16 +29,16 @@ inline void SafeReleaseMap(map<PCTSTR, PCTSTR>* pMap)
 
 I4C3DAnalyzeXML::I4C3DAnalyzeXML(void)
 {
-	g_pConfigPair = new vector<config_pair>;
+	g_pConfigPairContainer = new vector<config_pair>;
 }
 
 I4C3DAnalyzeXML::~I4C3DAnalyzeXML(void)
 {
 	CleanupRootElement();
-	if (g_pConfigPair) {
-		g_pConfigPair->clear();
-		delete g_pConfigPair;
-		g_pConfigPair = NULL;
+	if (g_pConfigPairContainer) {
+		g_pConfigPairContainer->clear();
+		delete g_pConfigPairContainer;
+		g_pConfigPairContainer = NULL;
 	}
 }
 
@@ -63,11 +57,11 @@ I4C3DAnalyzeXML::~I4C3DAnalyzeXML(void)
 void CleanupRootElement(void)
 {
 	if (g_bInitialized) {
-		if (g_pConfigPair) {
-			int size = g_pConfigPair->size();
+		if (g_pConfigPairContainer) {
+			int size = g_pConfigPairContainer->size();
 			for (int i = 0; i < size; ++i) {
-				delete (*g_pConfigPair)[i].first;
-				map<PCTSTR, PCTSTR>* pMap = (*g_pConfigPair)[i].second;
+				delete (*g_pConfigPairContainer)[i].first;
+				map<PCTSTR, PCTSTR>* pMap = (*g_pConfigPairContainer)[i].second;
 				SafeReleaseMap(pMap);
 				pMap = NULL;
 			}
@@ -100,7 +94,7 @@ BOOL I4C3DAnalyzeXML::LoadXML(PCTSTR szXMLUri)
 		{
 			TCHAR szError[I4C3D_BUFFER_SIZE];
 			_stprintf_s(szError, _countof(szError), _T("指定したパスに設定ファイルが存在しません[%s]。<I4C3DAnalyzeXML::LoadXML>"), szXMLUri);
-			I4C3DMisc::LogDebugMessage(Log_Error, szError);
+			LogDebugMessage(Log_Error, szError);
 		}
 		return FALSE;
 	}
@@ -126,7 +120,7 @@ BOOL I4C3DAnalyzeXML::LoadXML(PCTSTR szXMLUri)
 PCTSTR I4C3DAnalyzeXML::GetGlobalValue(PCTSTR szKey)
 {
 	if (!ReadGlobalTag()) {
-		I4C3DMisc::ReportError(_T("[ERROR] globalタグの読み込みに失敗しています。"));
+		ReportError(_T("[ERROR] globalタグの読み込みに失敗しています。"));
 		return NULL;
 	}
 
@@ -151,19 +145,19 @@ PCTSTR I4C3DAnalyzeXML::GetGlobalValue(PCTSTR szKey)
 PCTSTR I4C3DAnalyzeXML::GetSoftValue(PCTSTR szSoftName, PCTSTR szKey)
 {
 	//if (!this->ReadGlobalTag()) {
-	//	I4C3DMisc::ReportError(_T("[ERROR] globalタグの読み込みに失敗しています。"));
+	//	ReportError(_T("[ERROR] globalタグの読み込みに失敗しています。"));
 	//	return NULL;
 	//}
 	if (!this->ReadSoftsTag()) {
-		I4C3DMisc::ReportError(_T("[ERROR] softsタグの読み込みに失敗しています。"));
+		ReportError(_T("[ERROR] softsタグの読み込みに失敗しています。"));
 		return NULL;
 	}
 
-	if (g_pConfigPair) {
-		int size = g_pConfigPair->size();
+	if (g_pConfigPairContainer) {
+		int size = g_pConfigPairContainer->size();
 		for (int i = 0; i < size; ++i) {
-			if (_tcsicmp((*g_pConfigPair)[i].first, szSoftName) == 0) {
-				return GetMapItem((*g_pConfigPair)[i].second, szKey);
+			if (_tcsicmp((*g_pConfigPairContainer)[i].first, szSoftName) == 0) {
+				return GetMapItem((*g_pConfigPairContainer)[i].second, szKey);
 			}
 		}
 	}
@@ -210,9 +204,6 @@ BOOL I4C3DAnalyzeXML::ReadGlobalTag(void)
  * I4C3D.xmlのsoftsタグの解析に成功した場合にはTRUE、失敗した場合にはFALSEを返します。
  * 
  * XMLParser.dllを使用してI4C3D.xmlのsoftsタグの解析を行い、マップに格納します。
- * マップにはグローバルタグで指定された3Dソフトウェアに関するタグの内容を格納します。
- * 例: <key name="window_title">RTT DeltaView</key>
- * keyタグnameアトリビュートの値をマップのキーに、バリューをマップのバリューに格納します。
  * 
  * @remarks
  * マップの内容を参照するにはGetSoftValue()を使用します。
@@ -220,58 +211,14 @@ BOOL I4C3DAnalyzeXML::ReadGlobalTag(void)
  * @see
  * GetSoftValue()
  */
-//BOOL I4C3DAnalyzeXML::ReadSoftsTag(void)
-//{
-//	BOOL bRet = FALSE;
-//	if (!this->ReadGlobalTag()) {
-//		I4C3DMisc::LogDebugMessage(Log_Error, _T("globalタグの読み込みに失敗しています。<I4C3DAnalyzeXML::ReadSoftsTag>"));
-//		return bRet;
-//	}
-//
-//	if (g_pSoftwareConfig == NULL) {
-//		IXMLDOMNode* pSofts = NULL;
-//		IXMLDOMNodeList* pSoftsList = NULL;
-//		if (!GetDOMTree(g_pRootElement, TAG_SOFTS, &pSofts)) {
-//			I4C3DMisc::LogDebugMessage(Log_Error, _T("softsタグのDOM取得に失敗しています。<I4C3DAnalyzeXML::ReadSoftsTag>"));
-//			return bRet;
-//		}
-//
-//		LONG childCount = GetChildList(pSofts, &pSoftsList);
-//		for (int i = 0; i < childCount; i++) {
-//			IXMLDOMNode* pTempNode = NULL;
-//			if (GetListItem(pSoftsList, i, &pTempNode)) {
-//				TCHAR szSoftwareName[I4C3D_BUFFER_SIZE] = {0};
-//				if (GetAttribute(pTempNode, TAG_NAME, szSoftwareName, _countof(szSoftwareName))) {
-//
-//					// globalタグのターゲット名と比較
-//					if (!_tcsicmp(szSoftwareName,  this->GetGlobalValue(TAG_TARGET))) {
-//						g_pSoftwareConfig = StoreValues(pTempNode, TAG_NAME);
-//						FreeListItem(pTempNode);
-//						bRet = TRUE;
-//						break;
-//					}
-//
-//				}
-//				FreeListItem(pTempNode);
-//			}
-//		}
-//
-//		FreeChildList(pSoftsList);
-//		FreeDOMTree(pSofts);
-//	} else {
-//		bRet = TRUE;
-//	}
-//	return bRet;
-//}
-
 BOOL I4C3DAnalyzeXML::ReadSoftsTag(void)
 {
-	if (g_pConfigPair->size() == 0) {
+	if (g_pConfigPairContainer->size() == 0) {
 
 		IXMLDOMNode* pSofts = NULL;
 		IXMLDOMNodeList* pSoftsList = NULL;
 		if (!GetDOMTree(g_pRootElement, TAG_SOFTS, &pSofts)) {
-			I4C3DMisc::LogDebugMessage(Log_Error, _T("softsタグのDOM取得に失敗しています。<I4C3DAnalyzeXML::ReadSoftsTag>"));
+			LogDebugMessage(Log_Error, _T("softsタグのDOM取得に失敗しています。<I4C3DAnalyzeXML::ReadSoftsTag>"));
 			return FALSE;
 		}
 
@@ -285,7 +232,7 @@ BOOL I4C3DAnalyzeXML::ReadSoftsTag(void)
 					// globalタグのターゲット名と比較
 					TCHAR* pSoftwareName = new TCHAR[_tcslen(szSoftwareName)+1];
 					_tcscpy_s(pSoftwareName, _tcslen(szSoftwareName)+1, szSoftwareName);
-					g_pConfigPair->push_back(config_pair(pSoftwareName, StoreValues(pTempNode, TAG_NAME)));
+					g_pConfigPairContainer->push_back(config_pair(pSoftwareName, StoreValues(pTempNode, TAG_NAME)));
 					OutputDebugString(szSoftwareName);
 					OutputDebugString(L" push_back\n");
 				}

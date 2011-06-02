@@ -3,22 +3,21 @@
 
 #include "stdafx.h"
 #include "I4C3DModules.h"
-#include "I4C3DMisc.h"
 #include "I4C3DCore.h"
 #include "I4C3DAnalyzeXML.h"
 #include "I4C3DControl.h"
+#include "Miscellaneous.h"
 
 static I4C3DContext g_Context = {0};
 static I4C3DCore g_Core;
 static BOOL g_bStarted = FALSE;
 
-//static HWND g_targetWindow = NULL;
-//static BOOL CALLBACK EnumWindowProc(HWND hWnd, LPARAM lParam);
-
-//static BOOL SelectTarget(PCTSTR szTargetWindowTitle);
-//static HWND GetTarget3DSoftwareWnd(PCTSTR szTargetWindowTitle);
 static BOOL PrepareTargetController(char cTermination);
 static void DestroyTargetController();
+static const PCTSTR TAG_LOG			= _T("log");
+static const PCTSTR TAG_OFF			= _T("off");
+static const PCTSTR TAG_DEBUG		= _T("debug");
+static const PCTSTR TAG_INFO		= _T("info");
 static const PCTSTR TAG_TERMINATION	= _T("termination");
 
 /**
@@ -43,7 +42,7 @@ static const PCTSTR TAG_TERMINATION	= _T("termination");
  * @see
  * I4C3DStop()
  */
-BOOL WINAPI I4C3DStart(PCTSTR szXMLUri, PCTSTR szTargetWindowTitle)
+BOOL WINAPI I4C3DStart(PCTSTR szXMLUri)
 {
 	if (g_bStarted) {
 		return TRUE;
@@ -53,16 +52,30 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri, PCTSTR szTargetWindowTitle)
 	ZeroMemory(&g_Context, sizeof(g_Context));
 	g_Context.pAnalyzer = new I4C3DAnalyzeXML();
 	if (g_Context.pAnalyzer == NULL) {
-		I4C3DMisc::ReportError(_T("[ERROR] メモリの確保に失敗しています。初期化は行われません。"));
+		ReportError(_T("[ERROR] メモリの確保に失敗しています。初期化は行われません。"));
 		I4C3DStop();
 		return FALSE;
 	}
 	if (!g_Context.pAnalyzer->LoadXML(szXMLUri)) {
-		I4C3DMisc::ReportError(_T("[ERROR] XMLのロードに失敗しています。初期化は行われません。"));
+		ReportError(_T("[ERROR] XMLのロードに失敗しています。初期化は行われません。"));
 		I4C3DStop();
 		return FALSE;
 	}
-	I4C3DMisc::LogInitialize(g_Context.pAnalyzer);
+
+	// 設定ファイルからログレベルを取得
+	LOG_LEVEL logLevel = Log_Error;
+	PCTSTR szLogLevel = g_Context.pAnalyzer->GetGlobalValue(TAG_LOG);
+	if (szLogLevel != NULL) {
+		if (!_tcsicmp(szLogLevel, TAG_OFF)) {
+			logLevel = Log_Off;
+		} else if (!_tcsicmp(szLogLevel, TAG_DEBUG)) {
+			logLevel = Log_Debug;
+		} else if (!_tcsicmp(szLogLevel, TAG_INFO)) {
+			logLevel = Log_Info;
+		}
+		// 指定なし、上記以外ならLog_Error
+	}
+	LogInitialize(logLevel);
 
 	// 設定ファイルから終端文字を取得
 	char cTermination = '?';
@@ -70,7 +83,7 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri, PCTSTR szTargetWindowTitle)
 	if (szTermination != NULL) {
 		char cszTermination[5];
 		if (_tcslen(szTermination) != 1) {
-			I4C3DMisc::LogDebugMessage(Log_Error, _T("設定ファイルの終端文字の指定に誤りがあります。1文字で指定してください。'?'に仮指定されます"));
+			LogDebugMessage(Log_Error, _T("設定ファイルの終端文字の指定に誤りがあります。1文字で指定してください。'?'に仮指定されます"));
 			szTermination = _T("?");
 		}
 #if UNICODE || _UNICODE
@@ -78,7 +91,7 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri, PCTSTR szTargetWindowTitle)
 #else
 		strcpy_s(cszTermination, sizeof(cszTermination), szTermination);
 #endif
-		I4C3DMisc::RemoveWhiteSpaceA(cszTermination);
+		RemoveWhiteSpaceA(cszTermination);
 		cTermination = cszTermination[0];
 	}
 
@@ -121,7 +134,6 @@ void WINAPI I4C3DStop(void)
 	DestroyTargetController();
 	g_Context.bIsAlive = FALSE;
 	g_bStarted = FALSE;
-	//g_targetWindow = NULL;
 }
 
 /**
@@ -154,7 +166,7 @@ BOOL PrepareTargetController(char cTermination)
 
 	// 初期化
 	if (g_Context.pController == NULL || !g_Context.pController->Initialize(&g_Context, cTermination)) {
-		I4C3DMisc::LogDebugMessage(Log_Error, _T("コントローラの初期化に失敗しています。<I4C3DModules::SelectTargetController>"));
+		LogDebugMessage(Log_Error, _T("コントローラの初期化に失敗しています。<I4C3DModules::SelectTargetController>"));
 		return FALSE;
 	}
 

@@ -15,7 +15,7 @@ class I4C3DAnalyzeXML;
 #define HERE        __FILE__ "("__SLINE__")"
 
 #if DEBUG || _DEBUG
-#define DEBUG_PROFILE_MONITOR	I4C3DMisc::DebugProfileMonitor(HERE)
+#define DEBUG_PROFILE_MONITOR	DebugProfileMonitor(HERE)
 #else
 #define DEBUG_PROFILE_MONITOR
 #endif

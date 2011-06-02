@@ -1,7 +1,7 @@
 #include "StdAfx.h"
 #include "I4C3DAccessor.h"
 #include "I4C3DModulesDefs.h"
-#include "I4C3DMisc.h"
+#include "Miscellaneous.h"
 
 
 I4C3DAccessor::I4C3DAccessor(void)
@@ -46,8 +46,8 @@ SOCKET I4C3DAccessor::InitializeTCPSocket(LPCSTR szAddress, USHORT uPort, int nT
 	socketHandler = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (socketHandler == INVALID_SOCKET) {
 		_stprintf_s(szError, _countof(szError), _T("[ERROR] socket() : %d"), WSAGetLastError());
-		I4C3DMisc::ReportError(szError);
-		I4C3DMisc::LogDebugMessage(Log_Error, szError);
+		ReportError(szError);
+		LogDebugMessage(Log_Error, szError);
 		return socketHandler;
 	}
 
@@ -63,8 +63,8 @@ SOCKET I4C3DAccessor::InitializeTCPSocket(LPCSTR szAddress, USHORT uPort, int nT
 		nResult = connect(socketHandler, (const SOCKADDR*)&address, sizeof(address));
 		if (nResult == SOCKET_ERROR) {
 			_stprintf_s(szError, _countof(szError), _T("[ERROR] connect() : %d"), WSAGetLastError());
-			I4C3DMisc::ReportError(szError);
-			I4C3DMisc::LogDebugMessage(Log_Error, szError);
+			ReportError(szError);
+			LogDebugMessage(Log_Error, szError);
 			closesocket(socketHandler);
 			return INVALID_SOCKET;
 		}
@@ -75,8 +75,8 @@ SOCKET I4C3DAccessor::InitializeTCPSocket(LPCSTR szAddress, USHORT uPort, int nT
 		nResult = bind(socketHandler, (const SOCKADDR*)&address, sizeof(address));
 		if (nResult == SOCKET_ERROR) {
 			_stprintf_s(szError, _countof(szError), _T("[ERROR] bind() : %d"), WSAGetLastError());
-			I4C3DMisc::ReportError(szError);
-			I4C3DMisc::LogDebugMessage(Log_Error, szError);
+			ReportError(szError);
+			LogDebugMessage(Log_Error, szError);
 			closesocket(socketHandler);
 			return INVALID_SOCKET;
 		}
@@ -84,12 +84,12 @@ SOCKET I4C3DAccessor::InitializeTCPSocket(LPCSTR szAddress, USHORT uPort, int nT
 		nResult = listen(socketHandler, backlog);	// 最大backlogまで接続要求を受け付ける。それ以外はWSAECONNREFUSEDエラー。
 		if (nResult == SOCKET_ERROR) {
 			if (nResult == WSAECONNREFUSED) {
-				I4C3DMisc::ReportError(_T("[ERROR] listen() : WSAECONNREFUSED"));
-				I4C3DMisc::LogDebugMessage(Log_Error, _T("[ERROR] listen() : WSAECONNREFUSED"));
+				ReportError(_T("[ERROR] listen() : WSAECONNREFUSED"));
+				LogDebugMessage(Log_Error, _T("[ERROR] listen() : WSAECONNREFUSED"));
 			} else {
 				_stprintf_s(szError, _countof(szError), _T("[ERROR] listen() : %d"), WSAGetLastError());
-				I4C3DMisc::ReportError(szError);
-				I4C3DMisc::LogDebugMessage(Log_Error, szError);
+				ReportError(szError);
+				LogDebugMessage(Log_Error, szError);
 			}
 			closesocket(socketHandler);
 			return INVALID_SOCKET;
@@ -107,8 +107,8 @@ SOCKET I4C3DAccessor::InitializeUDPSocket(SOCKADDR_IN* pAddress,  LPCSTR szAddre
 	socketHandler = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (socketHandler == INVALID_SOCKET) {
 		_stprintf_s(szError, _countof(szError), _T("[ERROR] socket() : %d"), WSAGetLastError());
-		I4C3DMisc::ReportError(szError);
-		I4C3DMisc::LogDebugMessage(Log_Error, szError);
+		ReportError(szError);
+		LogDebugMessage(Log_Error, szError);
 		return socketHandler;
 	}
 	pAddress->sin_family = AF_INET;

@@ -56,13 +56,13 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;I4C3DMODULES_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <EnablePREfast>true</EnablePREfast>
-      <AdditionalIncludeDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DDriver\I4C3DDriver;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\XMLParser\XMLParser;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\VirtualMotion\VirtualMotion;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\Miscellaneous;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DDriver\I4C3DDriver;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\XMLParser\XMLParser;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\VirtualMotion\VirtualMotion;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ws2_32.lib;shlwapi.lib;WinMM.lib;Pdh.lib;XMLParser.lib;VirtualMotion.lib;I4C3DKeysHook.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DDriver\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ws2_32.lib;shlwapi.lib;WinMM.lib;Pdh.lib;XMLParser.lib;Miscellaneous.lib;VirtualMotion.lib;I4C3DKeysHook.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DKeysHook\Debug;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DDriver\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -74,7 +74,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;I4C3DMODULES_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <EnablePREfast>true</EnablePREfast>
-      <AdditionalIncludeDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DDriver\I4C3DDriver;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\XMLParser\XMLParser;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\VirtualMotion\VirtualMotion;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\Miscellaneous;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DDriver\I4C3DDriver;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\XMLParser\XMLParser;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\VirtualMotion\VirtualMotion;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -82,8 +82,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>ws2_32.lib;shlwapi.lib;WinMM.lib;Pdh.lib;XMLParser.lib;VirtualMotion.lib;I4C3DKeysHook.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DDriver\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ws2_32.lib;shlwapi.lib;WinMM.lib;Pdh.lib;XMLParser.lib;Miscellaneous.lib;VirtualMotion.lib;I4C3DKeysHook.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DKeysHook\Release;C:\Documents and Settings\Administrator\My Documents\Visual Studio 2010\Projects\I4C3DDriver\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -95,7 +95,6 @@
     <ClInclude Include="I4C3DControl.h" />
     <ClInclude Include="I4C3DCore.h" />
     <ClInclude Include="I4C3DLoadMonitor.h" />
-    <ClInclude Include="I4C3DMisc.h" />
     <ClInclude Include="I4C3DModules.h" />
     <ClInclude Include="I4C3DModulesDefs.h" />
     <ClInclude Include="I4C3DSoftwareHandler.h" />
@@ -117,7 +116,6 @@
     <ClCompile Include="I4C3DControl.cpp" />
     <ClCompile Include="I4C3DCore.cpp" />
     <ClCompile Include="I4C3DLoadMonitor.cpp" />
-    <ClCompile Include="I4C3DMisc.cpp" />
     <ClCompile Include="I4C3DModules.cpp" />
     <ClCompile Include="I4C3DSoftwareHandler.cpp" />
     <ClCompile Include="stdafx.cpp">

@@ -21,8 +21,13 @@ I4C3DSoftwareHandler::~I4C3DSoftwareHandler(void)
 	}
 }
 
-void I4C3DSoftwareHandler::PrepareSocket(void)
+BOOL I4C3DSoftwareHandler::PrepareSocket(void)
 {
 	I4C3DAccessor accessor;
 	m_socketHandler = accessor.InitializeUDPSocket(&m_address, "127.0.0.1", m_uPort);
+	if (m_socketHandler != INVALID_SOCKET) {
+		return TRUE;
+	} else {
+		return FALSE;
+	}
 }

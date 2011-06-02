@@ -1,11 +1,6 @@
 #pragma once
 #include "I4C3DModulesDefs.h"
 
-//typedef struct {
-//	SOCKET socketHandler;
-//	SOCKADDR_IN address;
-//} I4C3DUDPSocketPair;
-
 class I4C3DAccessor
 {
 public:

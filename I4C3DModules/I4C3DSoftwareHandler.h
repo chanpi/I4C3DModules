@@ -8,7 +8,7 @@ public:
 	I4C3DSoftwareHandler(void);
 	I4C3DSoftwareHandler(LPCTSTR szTarget, USHORT uPort);
 	~I4C3DSoftwareHandler(void);
-	void PrepareSocket(void);
+	BOOL PrepareSocket(void);
 
 	TCHAR* m_szTargetTitle;
 	USHORT m_uPort;
