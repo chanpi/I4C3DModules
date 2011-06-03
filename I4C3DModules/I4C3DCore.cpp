@@ -5,6 +5,7 @@
 #include "I4C3DAnalyzeXML.h"
 #include "I4C3DModulesDefs.h"
 #include "I4C3DLoadMonitor.h"
+#include "I4C3DCommon.h"
 #include "Miscellaneous.h"
 
 #include <process.h>
@@ -499,7 +500,10 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 
 		} else if (dwResult - WSA_WAIT_EVENT_0 == 1) {
 			CloseAllChildThreadHandle();
-			pContext->pController->Execute("exit", 5);
+			
+			I4C3DUDPPacket packet = {0};
+			strcpy_s(packet.szCommand, _countof(packet.szCommand), "exit");
+			pContext->pController->Execute(&packet, 4);
 			break;
 		}
 	}
@@ -518,7 +522,8 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 	I4C3DChildContext* pChildContext = (I4C3DChildContext*)pParam;
 
 	TCHAR szError[I4C3D_BUFFER_SIZE];
-	char recvBuffer[I4C3D_RECEIVE_LENGTH];
+	I4C3DUDPPacket packet = {0};
+	//char recvBuffer[I4C3D_RECEIVE_LENGTH];
 	SIZE_T totalRecvBytes = 0;
 	int nBytes = 0;
 	BOOL bBreak = FALSE;
@@ -534,7 +539,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 	hEventArray[0] = hEvent;
 	hEventArray[1] = pChildContext->pContext->hStopEvent;
 
-	FillMemory(recvBuffer, sizeof(recvBuffer), 0xFF);
+	FillMemory(packet.szCommand, sizeof(packet.szCommand), 0xFF);
 	while (!bBreak) {
 		if (events.iErrorCode[FD_ACCEPT_BIT] != 0) {
 			LogDebugMessage(Log_Error, TEXT("FD_ACCEPT_BIT"));
@@ -591,7 +596,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 				
 				InterlockedIncrement(&g_ullAccess);
 
-				nBytes = recv(pChildContext->clientSocket, recvBuffer + totalRecvBytes, sizeof(recvBuffer) - totalRecvBytes, 0);
+				nBytes = recv(pChildContext->clientSocket, packet.szCommand + totalRecvBytes, sizeof(packet.szCommand) - totalRecvBytes, 0);
 
 				if (nBytes == SOCKET_ERROR) {
 					_stprintf_s(szError, _countof(szError), _T("[ERROR] recv : %d"), WSAGetLastError());
@@ -606,13 +611,13 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 
 				} else if (nBytes > 0) {
 
-					PCSTR pTermination = (PCSTR)memchr(recvBuffer+totalRecvBytes, pChildContext->cTermination, nBytes);
+					PCSTR pTermination = (PCSTR)memchr(packet.szCommand+totalRecvBytes, pChildContext->cTermination, nBytes);
 					totalRecvBytes += nBytes;
 
 					// 終端文字が見つからない場合、バッファをクリア
 					if (pTermination == NULL) {
-						if (totalRecvBytes >= sizeof(recvBuffer)) {
-							FillMemory(recvBuffer, sizeof(recvBuffer), 0xFF);
+						if (totalRecvBytes >= sizeof(packet.szCommand)) {
+							FillMemory(packet.szCommand, sizeof(packet.szCommand), 0xFF);
 							totalRecvBytes = 0;
 						}
 						InterlockedDecrement(&g_ullAccess);
@@ -624,7 +629,8 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 						DEBUG_PROFILE_MONITOR;
 
 						// 電文解析
-						pChildContext->pContext->pController->Execute(recvBuffer, totalRecvBytes);
+						//packet.szCommand[totalRecvBytes-1] = '\0';
+						pChildContext->pContext->pController->Execute(&packet, totalRecvBytes);
 						Sleep(0);
 
 						//} else {
@@ -638,17 +644,17 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 						//	DEBUG_PROFILE_MONITOR;
 						//}
 
-						if (pTermination == recvBuffer + totalRecvBytes - 1) {
-							FillMemory(recvBuffer, sizeof(recvBuffer), 0xFF);
+						if (pTermination == packet.szCommand + totalRecvBytes - 1) {
+							FillMemory(packet.szCommand, sizeof(packet.szCommand), 0xFF);
 							totalRecvBytes = 0;
 
-						} else if (pTermination < recvBuffer + totalRecvBytes - 1) {
+						} else if (pTermination < packet.szCommand + totalRecvBytes - 1) {
 							DEBUG_PROFILE_MONITOR;
-							int nCopySize = _countof(recvBuffer) - (pTermination - recvBuffer + 1);
+							int nCopySize = _countof(packet.szCommand) - (pTermination - packet.szCommand + 1);
 
-							totalRecvBytes -= (pTermination - recvBuffer + 1);
-							MoveMemory(recvBuffer, pTermination+1, nCopySize);
-							FillMemory(recvBuffer + nCopySize, _countof(recvBuffer) - nCopySize, 0xFF);
+							totalRecvBytes -= (pTermination - packet.szCommand + 1);
+							MoveMemory(packet.szCommand, pTermination+1, nCopySize);
+							FillMemory(packet.szCommand + nCopySize, _countof(packet.szCommand) - nCopySize, 0xFF);
 							DEBUG_PROFILE_MONITOR;
 						} else {
 							bBreak = TRUE;
@@ -658,7 +664,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 
 						DEBUG_PROFILE_MONITOR;
 
-					} while ((pTermination = (LPCSTR)memchr(recvBuffer, pChildContext->cTermination, totalRecvBytes)) != NULL);
+					} while ((pTermination = (LPCSTR)memchr(packet.szCommand, pChildContext->cTermination, totalRecvBytes)) != NULL);
 
 					InterlockedDecrement(&g_ullAccess);
 
@@ -677,7 +683,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 
 	// closesocket
 	shutdown(pChildContext->clientSocket, SD_SEND);
-	recv(pChildContext->clientSocket, recvBuffer, sizeof(recvBuffer), 0);
+	recv(pChildContext->clientSocket, packet.szCommand, sizeof(packet.szCommand), 0);
 	shutdown(pChildContext->clientSocket, SD_BOTH);
 	closesocket(pChildContext->clientSocket);
 

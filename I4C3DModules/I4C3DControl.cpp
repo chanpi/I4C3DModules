@@ -3,7 +3,6 @@
 #include "Miscellaneous.h"
 #include "I4C3DAnalyzeXML.h"
 #include "I4C3DSoftwareHandler.h"
-#include "I4C3DCommon.h"
 #include <vector>
 using namespace std;
 
@@ -99,7 +98,7 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		double fTumbleRate = 1.0;
 		double fTrackRate = 1.0;
 		double fDollyRate = 1.0;
-		char sendBuffer[I4C3D_BUFFER_SIZE] = {0};
+		I4C3DUDPPacket packet = {0};
 
 		// ポート番号
 		USHORT uPort = 10001;
@@ -155,10 +154,10 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		}
 
 		// 各Plugin.exeへの電文作成・送信
-		sprintf_s(sendBuffer, g_initCommandFormat, "init", cszModifierKey, fTumbleRate, fTrackRate, fDollyRate, cTermination);
+		sprintf_s(packet.szCommand, g_initCommandFormat, "init", cszModifierKey, fTumbleRate, fTrackRate, fDollyRate, cTermination);
 
 		EnterCriticalSection(&g_lock);
-		sendto(pHandler->m_socketHandler, sendBuffer, strlen(sendBuffer), 0, (const SOCKADDR*)&pHandler->m_address, sizeof(pHandler->m_address));
+		sendto(pHandler->m_socketHandler, (const char*)&packet, strlen(packet.szCommand)+4, 0, (const SOCKADDR*)&pHandler->m_address, sizeof(pHandler->m_address));
 		LeaveCriticalSection(&g_lock);
 	}
 	m_bInitialized = TRUE;
@@ -180,8 +179,10 @@ void I4C3DControl::UnInitialize(void)
 	if (g_pSoftwareHandlerContainer != NULL) {
 		int size = g_pSoftwareHandlerContainer->size();
 		for (int i = 0; i < size; ++i) {
+			I4C3DUDPPacket packet = {0};
+			strcpy_s(packet.szCommand, _countof(packet.szCommand), "exit");
 			EnterCriticalSection(&g_lock);
-			sendto((*g_pSoftwareHandlerContainer)[i]->m_socketHandler, "exit", 5, 0, (const SOCKADDR*)&(*g_pSoftwareHandlerContainer)[i]->m_address, sizeof((*g_pSoftwareHandlerContainer)[i]->m_address));
+			sendto((*g_pSoftwareHandlerContainer)[i]->m_socketHandler, (const char*)&packet, 8, 0, (const SOCKADDR*)&(*g_pSoftwareHandlerContainer)[i]->m_address, sizeof((*g_pSoftwareHandlerContainer)[i]->m_address));
 			LeaveCriticalSection(&g_lock);
 
 			closesocket((*g_pSoftwareHandlerContainer)[i]->m_socketHandler);
@@ -192,7 +193,6 @@ void I4C3DControl::UnInitialize(void)
 	}
 	m_bInitialized = FALSE;
 }
-
 
 /**
  * @brief
@@ -206,7 +206,7 @@ void I4C3DControl::UnInitialize(void)
  * 
  * ipodからの電文をTOPMOSTの3Dソフトに転送します。転送はUDPで行います。
  */
-void I4C3DControl::Execute(LPCSTR szCommand, int commandLen)
+void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 {
 	TCHAR szWindowTitle[I4C3D_BUFFER_SIZE];
 	HWND hForeground = GetForegroundWindow();
@@ -219,14 +219,21 @@ void I4C3DControl::Execute(LPCSTR szCommand, int commandLen)
 	for (int i = 0; i < size; ++i) {
 		if (_tcsstr(szWindowTitle, (*g_pSoftwareHandlerContainer)[i]->m_szTargetTitle) != NULL) {
 			EnterCriticalSection(&g_lock);
-			sendto((*g_pSoftwareHandlerContainer)[i]->m_socketHandler, szCommand, commandLen, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[i]->m_address), sizeof((*g_pSoftwareHandlerContainer)[i]->m_address));
-			LeaveCriticalSection(&g_lock);
-			{
-				volatile int j = 0;
-				for (j = 0; j < 1; ++j) {
-					Sleep(1);
+
+			// ウィンドウハンドルを付加
+			if (hForeground != NULL) {
+				for (int i = 0; i < 4; ++i) {
+					pPacket->hwnd[i] = ((unsigned char*)&hForeground)[i];
 				}
+			} else {
+				pPacket->hwnd[0] = pPacket->hwnd[1] = pPacket->hwnd[2] = pPacket->hwnd[3] = 0;
 			}
+
+			//sendto((*g_pSoftwareHandlerContainer)[i]->m_socketHandler, szCommand, commandLen, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[i]->m_address), sizeof((*g_pSoftwareHandlerContainer)[i]->m_address));
+			sendto((*g_pSoftwareHandlerContainer)[i]->m_socketHandler, (const char*)pPacket, commandLen+4, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[i]->m_address), sizeof((*g_pSoftwareHandlerContainer)[i]->m_address));
+			LeaveCriticalSection(&g_lock);
+
+			Sleep(1);
 			return;
 		}
 	}

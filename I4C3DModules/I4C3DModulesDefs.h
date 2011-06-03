@@ -7,7 +7,6 @@ class I4C3DAnalyzeXML;
 
 #define MAX_LOADSTRING			100
 #define I4C3D_BUFFER_SIZE		256
-#define I4C3D_RECEIVE_LENGTH	1024
 
 #define _STR(x)     #x
 #define _STR2(x)    _STR(x)

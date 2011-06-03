@@ -1,5 +1,6 @@
 #pragma once
 #include "I4C3DModulesDefs.h"
+#include "I4C3DCommon.h"
 
 class I4C3DControl
 {
@@ -10,7 +11,8 @@ public:
 	
 	BOOL Initialize(I4C3DContext* pContext, char cTermination);
 	void UnInitialize(void);
-	void Execute(LPCSTR szCommand, int commandLen);
+	void Execute(I4C3DUDPPacket* pPacket, int commandLen);
+	//void Execute(LPCSTR szCommand, int commandLen);
 
 private:
 	// GUIÇ©ÇÁÇÃïœçXéÛït
