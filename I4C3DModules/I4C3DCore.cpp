@@ -500,10 +500,7 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 
 		} else if (dwResult - WSA_WAIT_EVENT_0 == 1) {
 			CloseAllChildThreadHandle();
-			
-			I4C3DUDPPacket packet = {0};
-			strcpy_s(packet.szCommand, _countof(packet.szCommand), "exit");
-			pContext->pController->Execute(&packet, 4);
+			pContext->pController->UnInitialize();
 			break;
 		}
 	}
@@ -523,7 +520,6 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 
 	TCHAR szError[I4C3D_BUFFER_SIZE];
 	I4C3DUDPPacket packet = {0};
-	//char recvBuffer[I4C3D_RECEIVE_LENGTH];
 	SIZE_T totalRecvBytes = 0;
 	int nBytes = 0;
 	BOOL bBreak = FALSE;
@@ -629,9 +625,8 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 						DEBUG_PROFILE_MONITOR;
 
 						// “d•¶‰ðÍ
-						//packet.szCommand[totalRecvBytes-1] = '\0';
 						pChildContext->pContext->pController->Execute(&packet, totalRecvBytes);
-						Sleep(0);
+						Sleep(1);
 
 						//} else {
 						//	// Hotkey

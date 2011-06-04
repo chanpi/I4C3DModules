@@ -218,22 +218,17 @@ void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 	int size = g_pSoftwareHandlerContainer->size();
 	for (int i = 0; i < size; ++i) {
 		if (_tcsstr(szWindowTitle, (*g_pSoftwareHandlerContainer)[i]->m_szTargetTitle) != NULL) {
-			EnterCriticalSection(&g_lock);
-
 			// ウィンドウハンドルを付加
-			if (hForeground != NULL) {
-				for (int i = 0; i < 4; ++i) {
-					pPacket->hwnd[i] = ((unsigned char*)&hForeground)[i];
-				}
-			} else {
-				pPacket->hwnd[0] = pPacket->hwnd[1] = pPacket->hwnd[2] = pPacket->hwnd[3] = 0;
+			if (hForeground == NULL) {
+				return;
+			}
+			for (int i = 0; i < 4; ++i) {
+				pPacket->hwnd[i] = ((unsigned char*)&hForeground)[i];
 			}
 
-			//sendto((*g_pSoftwareHandlerContainer)[i]->m_socketHandler, szCommand, commandLen, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[i]->m_address), sizeof((*g_pSoftwareHandlerContainer)[i]->m_address));
+			EnterCriticalSection(&g_lock);
 			sendto((*g_pSoftwareHandlerContainer)[i]->m_socketHandler, (const char*)pPacket, commandLen+4, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[i]->m_address), sizeof((*g_pSoftwareHandlerContainer)[i]->m_address));
 			LeaveCriticalSection(&g_lock);
-
-			Sleep(1);
 			return;
 		}
 	}
