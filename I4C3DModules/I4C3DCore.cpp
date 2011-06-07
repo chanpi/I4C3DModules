@@ -26,7 +26,7 @@ static BOOL CheckChildThreadCount();
 static void CloseChildThreadHandle(HANDLE hThread);
 static void CloseAllChildThreadHandle();
 
-//static CRITICAL_SECTION g_Lock;	// 子スレッドの管理に使用。インクリメント・デクリメントを行う過程にもロックをかける必要があるため。
+static CRITICAL_SECTION g_Lock;	// 子スレッドの管理に使用。インクリメント・デクリメントを行う過程にもロックをかける必要があるため。
 
 static const PCTSTR TAG_BACKLOG			= _T("backlog");
 static const PCTSTR TAG_PORT			= _T("port");
@@ -71,12 +71,12 @@ inline void SafeStopEventAndCloseHandle(HANDLE hEvent, HANDLE* hThreads, int thr
 
 I4C3DCore::I4C3DCore(void)
 {
-	//InitializeCriticalSection(&g_Lock);
+	InitializeCriticalSection(&g_Lock);
 }
 
 I4C3DCore::~I4C3DCore(void)
 {
-	//DeleteCriticalSection(&g_Lock);
+	DeleteCriticalSection(&g_Lock);
 }
 
 /**
@@ -185,6 +185,7 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 		_stscanf_s(szBacklog, _T("%d"), &g_backlog, sizeof(g_backlog)) != 1) {
 		g_backlog = 8;
 	}
+	g_backlog *= 3;	// 全端末SYN2回まで失敗できるだけのバックログ
 	g_ChildThreadInfoLimit = min(_countof(g_ChildThreadInfo), g_backlog);
 
 	// iPhone待ち受けスタート
@@ -352,35 +353,40 @@ BOOL CheckChildThreadCount()
 
 void AddChildThread(HANDLE hThread)
 {
-	//EnterCriticalSection(&g_Lock);
+	EnterCriticalSection(&g_Lock);
 	g_ChildThreadInfo[g_ChildThreadIndex++] = hThread;
-	//LeaveCriticalSection(&g_Lock);
+	LeaveCriticalSection(&g_Lock);
 }
 
 void CloseChildThreadHandle(HANDLE hThread)
 {
-	//EnterCriticalSection(&g_Lock);
+	EnterCriticalSection(&g_Lock);
 	for (int i = 0; i < g_ChildThreadIndex; i++) {
 		if ( g_ChildThreadInfo[i] == hThread ) {
 			CloseHandle(g_ChildThreadInfo[i]);
 			// ハンドルを閉じ、最後尾のスレッド情報と位置を交換し、空き場所を作る。
-			g_ChildThreadInfo[i] = g_ChildThreadInfo[g_ChildThreadInfoLimit-1];
+			g_ChildThreadInfo[i] = g_ChildThreadInfo[g_ChildThreadIndex-1];
+			g_ChildThreadInfo[g_ChildThreadIndex-1] = NULL;
 			g_ChildThreadIndex--;
-			//LeaveCriticalSection(&g_Lock);
+			LeaveCriticalSection(&g_Lock);
 			return;
 		}
 	}
-	//LeaveCriticalSection(&g_Lock);
+	LogDebugMessage(Log_Error, _T("CloseChildThreadHandle Error"));
+	LeaveCriticalSection(&g_Lock);
 }
 
 // 親スレッドのみからアクセス
 void CloseAllChildThreadHandle()
 {
 	WaitForMultipleObjects(g_ChildThreadIndex, g_ChildThreadInfo, TRUE, INFINITE);
-	for (int i = 0; i < g_ChildThreadIndex; i++) {
-		CloseHandle(g_ChildThreadInfo[i]);
+	if (g_ChildThreadIndex == 0) {
+		LogDebugMessage(Log_Debug, _T("CloseAllChildThreadHandle OK"));
+	} else {
+		TCHAR szError[I4C3D_BUFFER_SIZE];
+		_stprintf_s(szError, _countof(szError), _T("CloseAllChildThreadHandle NG (%dクライアント残っています) <I4C3DCore::CloseAllChildThreadHandle()>"), g_ChildThreadIndex);
+		LogDebugMessage(Log_Error, szError);
 	}
-	g_ChildThreadIndex = 0;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -583,10 +589,11 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 				static volatile ULONGLONG counter = 0;
 				InterlockedIncrement(&counter);
 
-				WSAResetEvent(hEvent);
+				//WSAResetEvent(hEvent);
 
 				if (g_ullAccessLimit < g_ullAccess) {
 					OutputDebugString(_T("Too mush accesses!!!!!!!\n"));
+					WSAResetEvent(hEvent);	// TODO
 					continue;
 				}
 				
@@ -598,11 +605,13 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 					_stprintf_s(szError, _countof(szError), _T("[ERROR] recv : %d"), WSAGetLastError());
 					ReportError(szError);
 					InterlockedDecrement(&g_ullAccess);
+					WSAResetEvent(hEvent);	// TODO
 					break;
 
 				} else if (pChildContext->pContext->processorContext.bIsBusy && counter % 2 == 0) {
 					InterlockedDecrement(&g_ullAccess);
 					OutputDebugString(_T("remove\n"));
+					WSAResetEvent(hEvent);	// TODO
 					continue;
 
 				} else if (nBytes > 0) {
@@ -617,6 +626,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 							totalRecvBytes = 0;
 						}
 						InterlockedDecrement(&g_ullAccess);
+						WSAResetEvent(hEvent);	// TODO
 						continue;
 					}
 
@@ -662,6 +672,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 					} while ((pTermination = (LPCSTR)memchr(packet.szCommand, pChildContext->cTermination, totalRecvBytes)) != NULL);
 
 					InterlockedDecrement(&g_ullAccess);
+					WSAResetEvent(hEvent);	// TODO
 
 					DEBUG_PROFILE_MONITOR;
 				}

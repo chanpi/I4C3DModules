@@ -222,8 +222,8 @@ void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 			if (hForeground == NULL) {
 				return;
 			}
-			for (int i = 0; i < 4; ++i) {
-				pPacket->hwnd[i] = ((unsigned char*)&hForeground)[i];
+			for (int j = 0; j < 4; ++j) {
+				pPacket->hwnd[j] = ((unsigned char*)&hForeground)[j];
 			}
 
 			EnterCriticalSection(&g_lock);
