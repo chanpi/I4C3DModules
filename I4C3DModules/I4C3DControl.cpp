@@ -9,7 +9,6 @@ using namespace std;
 //static void VKPush(HWND hTargetWnd, PCTSTR szKeyTypes, BOOL bUsePostMessage);
 static const PCTSTR TAG_MODIFIER	= _T("modifier");
 static const PCTSTR TAG_UDP_PORT	= _T("udp_port");
-static const PCTSTR TAG_TERMINATION	= _T("termination");
 static const PCTSTR TAG_TUMBLERATE	= _T("tumble_rate");
 static const PCTSTR TAG_TRACKRATE	= _T("track_rate");
 static const PCTSTR TAG_DOLLYRATE	= _T("dolly_rate");
@@ -104,11 +103,11 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		USHORT uPort = 10001;
 		PCTSTR szPort = pContext->pAnalyzer->GetSoftValue(g_szController[i], TAG_UDP_PORT);
 		if (szPort == NULL) {
-			uPort += i;
+			uPort += (USHORT)i;
 			_stprintf_s(szError, _countof(szError), _T("設定ファイルに%sのUDPポートを指定してください。仮に%uに設定します。<I4C3DControl::Initialize>"), g_szController[i], uPort);
 			LogDebugMessage(Log_Error, szError);
 		} else {
-			uPort = _wtoi(szPort);
+			uPort = (USHORT)_tstoi(szPort);
 		}
 
 		// ハンドラの初期化
@@ -208,7 +207,7 @@ void I4C3DControl::UnInitialize(void)
  */
 void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 {
-	TCHAR szWindowTitle[I4C3D_BUFFER_SIZE];
+	TCHAR szWindowTitle[I4C3D_BUFFER_SIZE] = {0};
 	HWND hForeground = GetForegroundWindow();
 	if (IsIconic(hForeground)) {
 		return;
@@ -222,8 +221,8 @@ void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 			if (hForeground == NULL) {
 				return;
 			}
-			for (int i = 0; i < 4; ++i) {
-				pPacket->hwnd[i] = ((unsigned char*)&hForeground)[i];
+			for (int j = 0; j < 4; ++j) {
+				pPacket->hwnd[j] = ((unsigned char*)&hForeground)[j];
 			}
 
 			EnterCriticalSection(&g_lock);

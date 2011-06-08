@@ -37,11 +37,10 @@ I4C3DAccessor::~I4C3DAccessor(void)
  * 
  * 受信タイムアウト指定付のTCPソケットを作成します。
  */
-SOCKET I4C3DAccessor::InitializeTCPSocket(LPCSTR szAddress, USHORT uPort, int nTimeoutMilisec, BOOL bSend, int backlog) {
+SOCKET I4C3DAccessor::InitializeTCPSocket(struct sockaddr_in* pAddress, LPCSTR szAddress, BOOL bSend, USHORT uPort)
+{
 	SOCKET socketHandler;
-	SOCKADDR_IN address;
 	TCHAR szError[I4C3D_BUFFER_SIZE];
-	int nResult = 0;
 
 	socketHandler = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (socketHandler == INVALID_SOCKET) {
@@ -51,55 +50,62 @@ SOCKET I4C3DAccessor::InitializeTCPSocket(LPCSTR szAddress, USHORT uPort, int nT
 		return socketHandler;
 	}
 
-	address.sin_family = AF_INET;
-	address.sin_port = htons(uPort);
-
-	// 受信タイムアウト指定
-	setsockopt(socketHandler, SOL_SOCKET, SO_RCVTIMEO, (const char*)&nTimeoutMilisec, sizeof(nTimeoutMilisec));
-
+	pAddress->sin_family = AF_INET;
+	pAddress->sin_port = htons(uPort);
 	if (bSend) {
-		address.sin_addr.S_un.S_addr = inet_addr(szAddress);
-
-		nResult = connect(socketHandler, (const SOCKADDR*)&address, sizeof(address));
-		if (nResult == SOCKET_ERROR) {
-			_stprintf_s(szError, _countof(szError), _T("[ERROR] connect() : %d"), WSAGetLastError());
-			ReportError(szError);
-			LogDebugMessage(Log_Error, szError);
-			closesocket(socketHandler);
-			return INVALID_SOCKET;
-		}
-		
+		pAddress->sin_addr.S_un.S_addr = inet_addr(szAddress);
 	} else {
-		address.sin_addr.S_un.S_addr = INADDR_ANY;
-
-		nResult = bind(socketHandler, (const SOCKADDR*)&address, sizeof(address));
-		if (nResult == SOCKET_ERROR) {
-			_stprintf_s(szError, _countof(szError), _T("[ERROR] bind() : %d"), WSAGetLastError());
-			ReportError(szError);
-			LogDebugMessage(Log_Error, szError);
-			closesocket(socketHandler);
-			return INVALID_SOCKET;
-		}
-
-		nResult = listen(socketHandler, backlog);	// 最大backlogまで接続要求を受け付ける。それ以外はWSAECONNREFUSEDエラー。
-		if (nResult == SOCKET_ERROR) {
-			if (nResult == WSAECONNREFUSED) {
-				ReportError(_T("[ERROR] listen() : WSAECONNREFUSED"));
-				LogDebugMessage(Log_Error, _T("[ERROR] listen() : WSAECONNREFUSED"));
-			} else {
-				_stprintf_s(szError, _countof(szError), _T("[ERROR] listen() : %d"), WSAGetLastError());
-				ReportError(szError);
-				LogDebugMessage(Log_Error, szError);
-			}
-			closesocket(socketHandler);
-			return INVALID_SOCKET;
-		}
+		pAddress->sin_addr.S_un.S_addr = INADDR_ANY;
 	}
-
 	return socketHandler;
 }
 
-SOCKET I4C3DAccessor::InitializeUDPSocket(SOCKADDR_IN* pAddress,  LPCSTR szAddress, USHORT uPort)
+
+BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct sockaddr_in* pAddress, int backlog, const HANDLE& hEventObject, long lNetworkEvents) {
+	BOOL bUse = TRUE;
+	setsockopt(socketHandler, SOL_SOCKET, SO_REUSEADDR, (const char*)&bUse, sizeof(bUse));
+	int nResult = 0;
+
+	TCHAR szError[I4C3D_BUFFER_SIZE] = {0};
+
+	// bind
+	nResult = bind(socketHandler, (const SOCKADDR*)pAddress, sizeof(*pAddress));
+	if (nResult == SOCKET_ERROR) {
+		_stprintf_s(szError, _countof(szError), _T("[ERROR] bind() : %d"), WSAGetLastError());
+		ReportError(szError);
+		LogDebugMessage(Log_Error, szError);
+		closesocket(socketHandler);
+		return FALSE;
+	}
+
+	// select
+	nResult = WSAEventSelect(socketHandler, hEventObject, lNetworkEvents);
+	if (nResult == SOCKET_ERROR) {
+		_stprintf_s(szError, _countof(szError), _T("[ERROR] WSAEventSelect() : %d"), WSAGetLastError());
+		ReportError(szError);
+		LogDebugMessage(Log_Error, szError);
+		closesocket(socketHandler);
+		return FALSE;
+	}
+
+	// listen
+	nResult = listen(socketHandler, backlog);	// 最大backlogまで接続要求を受け付ける。それ以外はWSAECONNREFUSEDエラー。
+	if (nResult == SOCKET_ERROR) {
+		if (nResult == WSAECONNREFUSED) {
+			ReportError(_T("[ERROR] listen() : WSAECONNREFUSED"));
+			LogDebugMessage(Log_Error, _T("[ERROR] listen() : WSAECONNREFUSED"));
+		} else {
+			_stprintf_s(szError, _countof(szError), _T("[ERROR] listen() : %d"), WSAGetLastError());
+			ReportError(szError);
+			LogDebugMessage(Log_Error, szError);
+		}
+		closesocket(socketHandler);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+SOCKET I4C3DAccessor::InitializeUDPSocket(struct sockaddr_in* pAddress, LPCSTR szAddress, USHORT uPort)
 {
 	SOCKET socketHandler = INVALID_SOCKET;
 	TCHAR szError[I4C3D_BUFFER_SIZE];

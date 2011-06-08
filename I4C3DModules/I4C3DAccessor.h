@@ -7,9 +7,8 @@ public:
 	I4C3DAccessor(void);
 	~I4C3DAccessor(void);
 
-	SOCKET InitializeTCPSocket(PCSTR szAddress, USHORT uPort, int nTimeoutMilisec, BOOL bSend, int backlog);
-	SOCKET InitializeUDPSocket(SOCKADDR_IN* pAddress,  LPCSTR szAddress, USHORT uPort);
-	//BOOL Send(LPCSTR lpszCommand);
-	//BOOL Recv(LPSTR lpszCommand, SIZE_T uSize);
+	SOCKET InitializeTCPSocket(struct sockaddr_in * pAddress, LPCSTR szAddress, BOOL bSend, USHORT uPort);
+	BOOL SetListeningSocket(const SOCKET& socketHandler, const struct sockaddr_in* pAddress, int backlog, const HANDLE& hEventObject, long lNetworkEvents);
+	SOCKET InitializeUDPSocket(struct sockaddr_in* pAddress,  LPCSTR szAddress, USHORT uPort);
 };
 

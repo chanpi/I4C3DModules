@@ -10,9 +10,6 @@
 
 #include <process.h>
 
-static volatile ULONGLONG g_ullAccess	= 0;
-static ULONGLONG g_ullAccessLimit		= 0;
-
 // 子スレッド情報を格納する
 static HANDLE g_ChildThreadInfo[8+2];	// 念のため+2。基本的には8クライアントまで。
 static volatile int g_ChildThreadIndex	= 0;
@@ -23,15 +20,16 @@ static unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam);
 
 static void AddChildThread(HANDLE hThread);
 static BOOL CheckChildThreadCount();
-static void CloseChildThreadHandle(HANDLE hThread);
-static void CloseAllChildThreadHandle();
+static void RemoveChildThread(HANDLE hThread);
+static void RemoveAllChildThread();
 
-//static CRITICAL_SECTION g_Lock;	// 子スレッドの管理に使用。インクリメント・デクリメントを行う過程にもロックをかける必要があるため。
+static void GetTerminationFromFile(I4C3DContext* pContext, char* cTermination);
+static BOOL CheckNetworkEventError(const WSANETWORKEVENTS& events);
+
+static CRITICAL_SECTION g_Lock;	// 子スレッドの管理に使用。インクリメント・デクリメントを行う過程にもロックをかける必要があるため。
 
 static const PCTSTR TAG_BACKLOG			= _T("backlog");
 static const PCTSTR TAG_PORT			= _T("port");
-static const PCTSTR TAG_ACCESSLIMIT		= _T("accesslimit");
-static const PCTSTR TAG_WAITMILLISEC	= _T("waitmillisec");
 static const PCTSTR TAG_TERMINATION		= _T("termination");
 
 static const PCTSTR TAG_CORETIME		= _T("cpu_coretime");
@@ -43,7 +41,6 @@ typedef struct {
 	I4C3DContext* pContext;
 	HANDLE hChildThread;
 	SOCKET clientSocket;
-	DWORD dwWaitMillisec;
 	char cTermination;
 } I4C3DChildContext;
 
@@ -71,12 +68,12 @@ inline void SafeStopEventAndCloseHandle(HANDLE hEvent, HANDLE* hThreads, int thr
 
 I4C3DCore::I4C3DCore(void)
 {
-	//InitializeCriticalSection(&g_Lock);
+	InitializeCriticalSection(&g_Lock);
 }
 
 I4C3DCore::~I4C3DCore(void)
 {
-	//DeleteCriticalSection(&g_Lock);
+	DeleteCriticalSection(&g_Lock);
 }
 
 /**
@@ -158,7 +155,6 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 {
 	TCHAR szError[I4C3D_BUFFER_SIZE];
 	USHORT uBridgePort = 0;
-	int nTimeoutMilisec = 3000;	// 必要？？
 
 	// 設定ファイルよりBridge Portを取得
 	PCTSTR szPort = pContext->pAnalyzer->GetGlobalValue(TAG_PORT);
@@ -172,13 +168,6 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 		return FALSE;
 	}
 
-	// 設定ファイルよりアクセス制限数を取得
-	PCTSTR szAccessLimit = pContext->pAnalyzer->GetGlobalValue(TAG_ACCESSLIMIT);
-	if (szAccessLimit == NULL || 
-		_stscanf_s(szAccessLimit, _T("%d"), &g_ullAccessLimit, sizeof(g_ullAccessLimit)) != 1) {
-			g_ullAccessLimit = 100;
-	}
-
 	// 設定ファイルより接続クライアント数を取得
 	PCTSTR szBacklog = pContext->pAnalyzer->GetGlobalValue(TAG_BACKLOG);
 	if (szBacklog == NULL ||
@@ -186,19 +175,20 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 		g_backlog = 8;
 	}
 	g_ChildThreadInfoLimit = min(_countof(g_ChildThreadInfo), g_backlog);
+	g_backlog *= 3;	// 全端末SYN2回まで失敗できるだけのバックログ
 
-	// iPhone待ち受けスタート
+	// iPhone待ち受けソケット生成
 	I4C3DAccessor accessor;
-	pContext->receiver = accessor.InitializeTCPSocket(NULL, uBridgePort, nTimeoutMilisec, FALSE, g_backlog);
+	pContext->receiver = accessor.InitializeTCPSocket(&pContext->address, NULL, FALSE, uBridgePort);
 	if (pContext->receiver == INVALID_SOCKET) {
 		LogDebugMessage(Log_Error, _T("InitializeSocket <I4C3DCore::Start>"));
 		return FALSE;
 	}
 
-	// 
-	pContext->hStopEvent = WSACreateEvent();
-	if (pContext->hStopEvent == WSA_INVALID_EVENT) {
-		_stprintf_s(szError, _countof(szError), _T("[ERROR] WSACreateEvent() : %d"), WSAGetLastError());
+	// 待ちうけ終了イベント作成
+	pContext->hStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	if (pContext->hStopEvent == NULL) {
+		_stprintf_s(szError, _countof(szError), _T("[ERROR] CreateEvent() : %d"), GetLastError());
 		ReportError(szError);
 		closesocket(pContext->receiver);
 		return FALSE;
@@ -208,7 +198,7 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 	if (pContext->hThread == INVALID_HANDLE_VALUE) {
 		_stprintf_s(szError, _countof(szError), _T("[ERROR] _beginthreadex() : %d"), GetLastError());
 		ReportError(szError);
-		WSACloseEvent(pContext->hStopEvent);
+		SafeCloseHandle(pContext->hStopEvent);
 		closesocket(pContext->receiver);
 		return FALSE;
 	}
@@ -234,58 +224,58 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
  * @see
  * Initialize()
  */
-BOOL I4C3DCore::InitializeProcessorContext(I4C3DContext* pContext)
-{
-	TCHAR szError[I4C3D_BUFFER_SIZE];
-
-	pContext->processorContext.bIsBusy = FALSE;
-	pContext->processorContext.uNapTime = 0;
-
-	// 設定ファイルよりCPUに関する値を取得
-	// 最低でも(CPUの負荷によって制限が起きている場合でも)コマンド送信する間隔(msec)
-	PCTSTR szCoreTime = pContext->pAnalyzer->GetGlobalValue(TAG_CORETIME);
-	if (szCoreTime == NULL ||
-		_stscanf_s(szCoreTime, _T("%u"), &pContext->processorContext.uCoreTime, sizeof(pContext->processorContext.uCoreTime)) != 1) {
-			pContext->processorContext.uCoreTime = 100;
-	}
-	// コマンド送信を制限する閾値となるCPU使用率
-	PCTSTR szThreshouldOfBusy = pContext->pAnalyzer->GetGlobalValue(TAG_THRESHOULD_BUSY);
-	if (szThreshouldOfBusy == NULL ||
-		_stscanf_s(szThreshouldOfBusy, _T("%u"), &pContext->processorContext.uThreshouldOfBusy, sizeof(pContext->processorContext.uThreshouldOfBusy)) != 1) {
-			pContext->processorContext.uThreshouldOfBusy = 80;
-	}
-
-	// 終了イベント
-	pContext->processorContext.hProcessorStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	if (pContext->processorContext.hProcessorStopEvent == NULL) {
-		_stprintf_s(szError, _countof(szError), _T("[ERROR] CreateEvent() : %d"), GetLastError());
-		ReportError(szError);
-		return FALSE;
-	}
-
-	// CPU使用率によって適度にSleepをはさみながらコマンド実行を許可するスレッド
-	pContext->processorContext.hProcessorContextThread = (HANDLE)_beginthreadex(NULL, 0, I4C3DProcessorContextThreadProc, pContext, CREATE_SUSPENDED, NULL);
-	if (pContext->processorContext.hProcessorContextThread == INVALID_HANDLE_VALUE) {
-		_stprintf_s(szError, _countof(szError), _T("[ERROR] _beginthreadex() : %d"), GetLastError());
-		ReportError(szError);
-		SafeCloseHandle(pContext->processorContext.hProcessorStopEvent);
-		return FALSE;
-	}
-	// CPU使用率を測りながら使用率によってSleepの間隔を調整するスレッド
-	pContext->processorContext.hProcessorMonitorThread = (HANDLE)_beginthreadex(NULL, 0, I4C3DProcessorMonitorThreadProc, pContext, CREATE_SUSPENDED, NULL);
-	if (pContext->processorContext.hProcessorMonitorThread == INVALID_HANDLE_VALUE) {
-		_stprintf_s(szError, _countof(szError), _T("[ERROR] _beginthreadex() : %d"), GetLastError());
-		ReportError(szError);
-		SafeCloseHandle(pContext->processorContext.hProcessorStopEvent);
-		SafeCloseHandle(pContext->processorContext.hProcessorContextThread);
-		return FALSE;
-	}
-
-	ResumeThread(pContext->processorContext.hProcessorContextThread);
-	ResumeThread(pContext->processorContext.hProcessorMonitorThread);
-
-	return TRUE;
-}
+//BOOL I4C3DCore::InitializeProcessorContext(I4C3DContext* pContext)
+//{
+//	TCHAR szError[I4C3D_BUFFER_SIZE];
+//
+//	pContext->processorContext.bIsBusy = FALSE;
+//	pContext->processorContext.uNapTime = 0;
+//
+//	// 設定ファイルよりCPUに関する値を取得
+//	// 最低でも(CPUの負荷によって制限が起きている場合でも)コマンド送信する間隔(msec)
+//	PCTSTR szCoreTime = pContext->pAnalyzer->GetGlobalValue(TAG_CORETIME);
+//	if (szCoreTime == NULL ||
+//		_stscanf_s(szCoreTime, _T("%u"), &pContext->processorContext.uCoreTime, sizeof(pContext->processorContext.uCoreTime)) != 1) {
+//			pContext->processorContext.uCoreTime = 100;
+//	}
+//	// コマンド送信を制限する閾値となるCPU使用率
+//	PCTSTR szThreshouldOfBusy = pContext->pAnalyzer->GetGlobalValue(TAG_THRESHOULD_BUSY);
+//	if (szThreshouldOfBusy == NULL ||
+//		_stscanf_s(szThreshouldOfBusy, _T("%u"), &pContext->processorContext.uThreshouldOfBusy, sizeof(pContext->processorContext.uThreshouldOfBusy)) != 1) {
+//			pContext->processorContext.uThreshouldOfBusy = 80;
+//	}
+//
+//	// 終了イベント
+//	pContext->processorContext.hProcessorStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+//	if (pContext->processorContext.hProcessorStopEvent == NULL) {
+//		_stprintf_s(szError, _countof(szError), _T("[ERROR] CreateEvent() : %d"), GetLastError());
+//		ReportError(szError);
+//		return FALSE;
+//	}
+//
+//	// CPU使用率によって適度にSleepをはさみながらコマンド実行を許可するスレッド
+//	pContext->processorContext.hProcessorContextThread = (HANDLE)_beginthreadex(NULL, 0, I4C3DProcessorContextThreadProc, pContext, CREATE_SUSPENDED, NULL);
+//	if (pContext->processorContext.hProcessorContextThread == INVALID_HANDLE_VALUE) {
+//		_stprintf_s(szError, _countof(szError), _T("[ERROR] _beginthreadex() : %d"), GetLastError());
+//		ReportError(szError);
+//		SafeCloseHandle(pContext->processorContext.hProcessorStopEvent);
+//		return FALSE;
+//	}
+//	// CPU使用率を測りながら使用率によってSleepの間隔を調整するスレッド
+//	pContext->processorContext.hProcessorMonitorThread = (HANDLE)_beginthreadex(NULL, 0, I4C3DProcessorMonitorThreadProc, pContext, CREATE_SUSPENDED, NULL);
+//	if (pContext->processorContext.hProcessorMonitorThread == INVALID_HANDLE_VALUE) {
+//		_stprintf_s(szError, _countof(szError), _T("[ERROR] _beginthreadex() : %d"), GetLastError());
+//		ReportError(szError);
+//		SafeCloseHandle(pContext->processorContext.hProcessorStopEvent);
+//		SafeCloseHandle(pContext->processorContext.hProcessorContextThread);
+//		return FALSE;
+//	}
+//
+//	ResumeThread(pContext->processorContext.hProcessorContextThread);
+//	ResumeThread(pContext->processorContext.hProcessorMonitorThread);
+//
+//	return TRUE;
+//}
 
 /**
  * @brief
@@ -322,10 +312,10 @@ void I4C3DCore::UnInitialize(I4C3DContext* pContext)
 {
 	// プロセッサ関連終了
 	HANDLE hThread[2];
-	hThread[0] = pContext->processorContext.hProcessorMonitorThread;
-	hThread[1] = pContext->processorContext.hProcessorContextThread;
+	//hThread[0] = pContext->processorContext.hProcessorMonitorThread;
+	//hThread[1] = pContext->processorContext.hProcessorContextThread;
 
-	SafeStopEventAndCloseHandle(pContext->processorContext.hProcessorStopEvent, hThread, 2);
+	//SafeStopEventAndCloseHandle(pContext->processorContext.hProcessorStopEvent, hThread, 2);
 
 	// 終了イベント設定/スレッド終了
 	hThread[0] = pContext->hThread;
@@ -344,46 +334,79 @@ void I4C3DCore::UnInitialize(I4C3DContext* pContext)
 
 BOOL CheckChildThreadCount()
 {
+	EnterCriticalSection(&g_Lock);
 	if (g_ChildThreadIndex >= g_ChildThreadInfoLimit) {
+		LeaveCriticalSection(&g_Lock);
 		return FALSE;
 	}
+	LeaveCriticalSection(&g_Lock);
 	return TRUE;
 }
 
 void AddChildThread(HANDLE hThread)
 {
-	//EnterCriticalSection(&g_Lock);
+	EnterCriticalSection(&g_Lock);
 	g_ChildThreadInfo[g_ChildThreadIndex++] = hThread;
-	//LeaveCriticalSection(&g_Lock);
+	LeaveCriticalSection(&g_Lock);
 }
 
-void CloseChildThreadHandle(HANDLE hThread)
+void RemoveChildThread(HANDLE hThread)
 {
-	//EnterCriticalSection(&g_Lock);
+	EnterCriticalSection(&g_Lock);
 	for (int i = 0; i < g_ChildThreadIndex; i++) {
 		if ( g_ChildThreadInfo[i] == hThread ) {
-			CloseHandle(g_ChildThreadInfo[i]);
+			SafeCloseHandle(g_ChildThreadInfo[i]);
 			// ハンドルを閉じ、最後尾のスレッド情報と位置を交換し、空き場所を作る。
-			g_ChildThreadInfo[i] = g_ChildThreadInfo[g_ChildThreadInfoLimit-1];
+			g_ChildThreadInfo[i] = g_ChildThreadInfo[g_ChildThreadIndex-1];
+			g_ChildThreadInfo[g_ChildThreadIndex-1] = NULL;
 			g_ChildThreadIndex--;
-			//LeaveCriticalSection(&g_Lock);
+			LeaveCriticalSection(&g_Lock);
 			return;
 		}
 	}
-	//LeaveCriticalSection(&g_Lock);
+	LogDebugMessage(Log_Error, _T("RemoveChildThread Error"));
+	LeaveCriticalSection(&g_Lock);
 }
 
 // 親スレッドのみからアクセス
-void CloseAllChildThreadHandle()
+void RemoveAllChildThread()
 {
 	WaitForMultipleObjects(g_ChildThreadIndex, g_ChildThreadInfo, TRUE, INFINITE);
-	for (int i = 0; i < g_ChildThreadIndex; i++) {
-		CloseHandle(g_ChildThreadInfo[i]);
+	if (g_ChildThreadIndex == 0) {
+		LogDebugMessage(Log_Debug, _T("RemoveAllChildThread OK"));
+	} else {
+		TCHAR szError[I4C3D_BUFFER_SIZE];
+		_stprintf_s(szError, _countof(szError), _T("RemoveAllChildThread NG (%dクライアント残っています) <I4C3DCore::RemoveAllChildThread()>"), g_ChildThreadIndex);
+		LogDebugMessage(Log_Error, szError);
 	}
-	g_ChildThreadIndex = 0;
 }
 
 //////////////////////////////////////////////////////////////////////////////
+
+void GetTerminationFromFile(I4C3DContext* pContext, char* cTermination) {
+	PCTSTR szTermination = pContext->pAnalyzer->GetGlobalValue(TAG_TERMINATION);
+	if (szTermination != NULL) {
+		char cszTermination[5];
+		if (_tcslen(szTermination) != 1) {
+			LogDebugMessage(Log_Error, _T("設定ファイルの終端文字の指定に誤りがあります。1文字で指定してください。'?'に仮指定されます"));
+			szTermination = _T("?");
+		}
+#if UNICODE || _UNICODE
+		WideCharToMultiByte(CP_ACP, 0, szTermination, _tcslen(szTermination), cszTermination, sizeof(cszTermination), NULL, NULL);
+#else
+		strcpy_s(cszTermination, sizeof(cszTermination), szTermination);
+#endif
+		RemoveWhiteSpaceA(cszTermination);
+
+		*cTermination = cszTermination[0];
+		LogDebugMessage(Log_Debug, szTermination);
+
+	} else {
+		*cTermination = '?';
+
+	}
+}
+
 
 // accept処理を非同期で行う
 unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
@@ -399,20 +422,22 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 	HANDLE hChildThread = NULL;
 	UINT uThreadID = 0;
 	I4C3DChildContext* pChildContext = NULL;
+	char cTermination = 0;
 
 	DWORD dwResult = 0;
 	WSAEVENT hEvent = NULL;
 	WSAEVENT hEventArray[2] = {0};
 	WSANETWORKEVENTS events = {0};
 
-	hEvent = WSACreateEvent();
-	if (hEvent == WSA_INVALID_EVENT) {
-		_stprintf_s(szError, _countof(szError), _T("[ERROR] WSACreateEvent() : %d"), WSAGetLastError());
+	hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+	if (hEvent == NULL) {
+		_stprintf_s(szError, _countof(szError), _T("[ERROR] CreateEvent() : %d <I4C3DCore::I4C3DReceiveThreadProc()>"), GetLastError());
 		ReportError(szError);
 		return FALSE;
 	}
 
-	WSAEventSelect(pContext->receiver, hEvent, FD_ACCEPT | FD_CLOSE);
+	I4C3DAccessor accessor;
+	accessor.SetListeningSocket(pContext->receiver, &pContext->address, g_backlog, hEvent, FD_ACCEPT | FD_CLOSE);
 
 	hEventArray[0] = hEvent;
 	hEventArray[1] = pContext->hStopEvent;
@@ -420,7 +445,7 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 	for (;;) {
 		dwResult = WSAWaitForMultipleEvents(2, hEventArray, FALSE, WSA_INFINITE, FALSE);
 		if (dwResult == WSA_WAIT_FAILED) {
-			_stprintf_s(szError, _countof(szError), _T("[ERROR] WSA_WAIT_FAILED : %d"), WSAGetLastError());
+			_stprintf_s(szError, _countof(szError), _T("[ERROR] WSA_WAIT_FAILED : %d <I4C3DCore::I4C3DReceiveThreadProc()>"), WSAGetLastError());
 			ReportError(szError);
 			break;
 		}
@@ -432,15 +457,14 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 			} else if (events.lNetworkEvents & FD_ACCEPT) {
 				// accept
 				if ( !CheckChildThreadCount() ) {
-					LogDebugMessage(Log_Error, _T("接続クライアント数が制限を越えました。<I4C3DCore::I4C3DReceiveThreadProc>"));
-					WSAResetEvent(hEvent);
+					LogDebugMessage(Log_Error, _T("接続クライアント数が制限を越えました。<I4C3DCore::I4C3DReceiveThreadProc()>"));
 					continue;
 				}
 
 				nLen = sizeof(address);
 				newClient = accept(pContext->receiver, (SOCKADDR*)&address, &nLen);
 				if (newClient == INVALID_SOCKET) {
-					_stprintf_s(szError, _countof(szError), _T("[ERROR] accept : %d"), WSAGetLastError());
+					_stprintf_s(szError, _countof(szError), _T("[ERROR] accept : %d <I4C3DCore::I4C3DReceiveThreadProc()>"), WSAGetLastError());
 					ReportError(szError);
 					break;
 				}
@@ -453,35 +477,11 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 					break;
 				}
 
-				// 設定ファイルから待機時間を取得
-				PCTSTR szWaitMillisec = pContext->pAnalyzer->GetGlobalValue(TAG_WAITMILLISEC);
-				if (szWaitMillisec == NULL || 
-					_stscanf_s(szWaitMillisec, _T("%d"), &pChildContext->dwWaitMillisec, sizeof(pChildContext->dwWaitMillisec)) != 1) {
-						pChildContext->dwWaitMillisec = 2000;
-				}
-
 				// 設定ファイルから終端文字を取得
-				PCTSTR szTermination = pContext->pAnalyzer->GetGlobalValue(TAG_TERMINATION);
-				if (szTermination != NULL) {
-					char cszTermination[5];
-					if (_tcslen(szTermination) != 1) {
-						LogDebugMessage(Log_Error, _T("設定ファイルの終端文字の指定に誤りがあります。1文字で指定してください。'?'に仮指定されます"));
-						szTermination = _T("?");
-					}
-#if UNICODE || _UNICODE
-					WideCharToMultiByte(CP_ACP, 0, szTermination, _tcslen(szTermination), cszTermination, sizeof(cszTermination), NULL, NULL);
-#else
-					strcpy_s(cszTermination, sizeof(cszTermination), szTermination);
-#endif
-					RemoveWhiteSpaceA(cszTermination);
-
-					pChildContext->cTermination = cszTermination[0];
-					LogDebugMessage(Log_Debug, szTermination);
-
-				} else {
-					pChildContext->cTermination = _T('?');
-
+				if (cTermination == 0) {
+					GetTerminationFromFile(pContext, &cTermination);
 				}
+				pChildContext->cTermination = cTermination;
 
 				pChildContext->pContext = pContext;
 				pChildContext->clientSocket = newClient;
@@ -496,15 +496,14 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 					ResumeThread(hChildThread);
 				}
 			}
-			WSAResetEvent(hEvent);
 
 		} else if (dwResult - WSA_WAIT_EVENT_0 == 1) {
-			CloseAllChildThreadHandle();
+			RemoveAllChildThread();
 			pContext->pController->UnInitialize();
 			break;
 		}
 	}
-	WSACloseEvent(hEvent);
+	SafeCloseHandle(hEvent);
 
 	shutdown(pContext->receiver, SD_BOTH);
 	closesocket(pContext->receiver);
@@ -512,14 +511,17 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 	return EXIT_SUCCESS;
 }
 
+
 unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 {
 	LogDebugMessage(Log_Debug, _T("--- in I4C3DAcceptedThreadProc ---"));
 
 	I4C3DChildContext* pChildContext = (I4C3DChildContext*)pParam;
 
-	TCHAR szError[I4C3D_BUFFER_SIZE];
+	TCHAR szError[I4C3D_BUFFER_SIZE] = {0};
 	I4C3DUDPPacket packet = {0};
+	const SIZE_T packetBufferSize = sizeof(packet.szCommand);
+
 	SIZE_T totalRecvBytes = 0;
 	int nBytes = 0;
 	BOOL bBreak = FALSE;
@@ -529,49 +531,43 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 	WSAEVENT hEventArray[2];
 	WSANETWORKEVENTS events = {0};
 
-	hEvent = WSACreateEvent();
+	hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+	if (hEvent == NULL) {
+		_stprintf_s(szError, _countof(szError), _T("[ERROR] CreateEvent() : %d"), GetLastError());
+		ReportError(szError);
+
+		shutdown(pChildContext->clientSocket, SD_SEND);
+		recv(pChildContext->clientSocket, packet.szCommand, packetBufferSize, 0);
+		shutdown(pChildContext->clientSocket, SD_BOTH);
+		closesocket(pChildContext->clientSocket);
+
+		RemoveChildThread( pChildContext->hChildThread );
+		free(pChildContext);
+		return EXIT_FAILURE;
+	}
 	WSAEventSelect(pChildContext->clientSocket, hEvent, FD_READ | FD_CLOSE);
 
 	hEventArray[0] = hEvent;
 	hEventArray[1] = pChildContext->pContext->hStopEvent;
 
-	FillMemory(packet.szCommand, sizeof(packet.szCommand), 0xFF);
+	FillMemory(packet.szCommand, packetBufferSize, 0xFF);
 	while (!bBreak) {
-		if (events.iErrorCode[FD_ACCEPT_BIT] != 0) {
-			LogDebugMessage(Log_Error, TEXT("FD_ACCEPT_BIT"));
-			break;
-		} else if (events.iErrorCode[FD_CLOSE_BIT] != 0) {
-			LogDebugMessage(Log_Error, TEXT("FD_CLOSE_BIT"));
-			break;
-		} else if (events.iErrorCode[FD_CONNECT_BIT] != 0) {
-			LogDebugMessage(Log_Error, TEXT("FD_CONNECT_BIT"));
-			break;
-		} else if (events.iErrorCode[FD_OOB_BIT] != 0) {
-			LogDebugMessage(Log_Error, TEXT("FD_OOB_BIT"));
-			break;
-		} else if (events.iErrorCode[FD_QOS_BIT] != 0) {
-			LogDebugMessage(Log_Error, TEXT("FD_QOS_BIT"));
-			break;
-		} else if (events.iErrorCode[FD_READ_BIT] != 0) {
-			LogDebugMessage(Log_Error, TEXT("FD_READ_BIT"));
-			break;
-		} else if (events.iErrorCode[FD_WRITE_BIT] != 0) {
-			LogDebugMessage(Log_Error, TEXT("FD_WRITE_BIT"));
+		if (!CheckNetworkEventError(events)) {
 			break;
 		}
 
-		dwResult = WSAWaitForMultipleEvents(2, hEventArray, FALSE, INFINITE, FALSE);
+		dwResult = WSAWaitForMultipleEvents(2, hEventArray, FALSE, WSA_INFINITE, FALSE);
 
 		DEBUG_PROFILE_MONITOR;
 
 		if (dwResult == WSA_WAIT_FAILED) {
-			LogDebugMessage(Log_Error, _T("WSAWaitForMultipleEvents : WSA_WAIT_FAILED <I4C3DCore::I4C3DAcceptedThreadProc>"));
+			LogDebugMessage(Log_Error, _T("WSAWaitForMultipleEvents : WSA_WAIT_FAILED <I4C3DCore::I4C3DAcceptedThreadProc()>"));
 			break;
 		}
 
 		if (dwResult - WSA_WAIT_EVENT_0 == 0) {
 			if (WSAEnumNetworkEvents(pChildContext->clientSocket, hEvent, &events) != 0) {
-				_stprintf_s(szError, _countof(szError), _T("[ERROR] WSAEnumNetworkEvents() : %d"), WSAGetLastError());
+				_stprintf_s(szError, _countof(szError), _T("[ERROR] WSAEnumNetworkEvents() : %d <I4C3DCore::I4C3DAcceptedThreadProc>"), WSAGetLastError());
 				ReportError(szError);
 				break;
 			}
@@ -580,43 +576,28 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 				break;
 
 			} else if (events.lNetworkEvents & FD_READ) {
-				static volatile ULONGLONG counter = 0;
-				InterlockedIncrement(&counter);
-
-				WSAResetEvent(hEvent);
-
-				if (g_ullAccessLimit < g_ullAccess) {
-					OutputDebugString(_T("Too mush accesses!!!!!!!\n"));
-					continue;
-				}
-				
-				InterlockedIncrement(&g_ullAccess);
-
-				nBytes = recv(pChildContext->clientSocket, packet.szCommand + totalRecvBytes, sizeof(packet.szCommand) - totalRecvBytes, 0);
+				nBytes = recv(pChildContext->clientSocket, packet.szCommand + totalRecvBytes, packetBufferSize - totalRecvBytes, 0);
 
 				if (nBytes == SOCKET_ERROR) {
-					_stprintf_s(szError, _countof(szError), _T("[ERROR] recv : %d"), WSAGetLastError());
-					ReportError(szError);
-					InterlockedDecrement(&g_ullAccess);
+					if (WSAGetLastError() == WSAEWOULDBLOCK) {
+						continue;
+					} else {
+						_stprintf_s(szError, _countof(szError), _T("[ERROR] recv : %d <I4C3DCore::I4C3DAcceptedThreadProc>"), WSAGetLastError());
+						ReportError(szError);
+					}
 					break;
-
-				} else if (pChildContext->pContext->processorContext.bIsBusy && counter % 2 == 0) {
-					InterlockedDecrement(&g_ullAccess);
-					OutputDebugString(_T("remove\n"));
-					continue;
 
 				} else if (nBytes > 0) {
 
-					PCSTR pTermination = (PCSTR)memchr(packet.szCommand+totalRecvBytes, pChildContext->cTermination, nBytes);
 					totalRecvBytes += nBytes;
+					PCSTR pTermination = (PCSTR)memchr(packet.szCommand, pChildContext->cTermination, totalRecvBytes);
 
 					// 終端文字が見つからない場合、バッファをクリア
 					if (pTermination == NULL) {
-						if (totalRecvBytes >= sizeof(packet.szCommand)) {
-							FillMemory(packet.szCommand, sizeof(packet.szCommand), 0xFF);
+						if (totalRecvBytes >= packetBufferSize) {
+							FillMemory(packet.szCommand, packetBufferSize, 0xFF);
 							totalRecvBytes = 0;
 						}
-						InterlockedDecrement(&g_ullAccess);
 						continue;
 					}
 
@@ -624,33 +605,30 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 
 						DEBUG_PROFILE_MONITOR;
 
-						// 電文解析
-						pChildContext->pContext->pController->Execute(&packet, totalRecvBytes);
+						// プラグインへ電文転送
+						pChildContext->pContext->pController->Execute(&packet, pTermination-packet.szCommand+1);
 						Sleep(1);
 
 						//} else {
 						//	// Hotkey
-						//	DEBUG_PROFILE_MONITOR;
 						//	MoveMemory(szCommand, recvBuffer, pTermination-recvBuffer);
 						//	szCommand[pTermination-recvBuffer] = '\0';
 						//	EnterCriticalSection(&g_Lock);
 						//	pChildContext->pContext->pController->Execute(pChildContext->pContext, &delta, szCommand);
 						//	LeaveCriticalSection(&g_Lock);
-						//	DEBUG_PROFILE_MONITOR;
 						//}
 
-						if (pTermination == packet.szCommand + totalRecvBytes - 1) {
-							FillMemory(packet.szCommand, sizeof(packet.szCommand), 0xFF);
+						if (pTermination == (packet.szCommand + totalRecvBytes - 1)) {
+							FillMemory(packet.szCommand, packetBufferSize, 0xFF);
 							totalRecvBytes = 0;
 
-						} else if (pTermination < packet.szCommand + totalRecvBytes - 1) {
-							DEBUG_PROFILE_MONITOR;
-							int nCopySize = _countof(packet.szCommand) - (pTermination - packet.szCommand + 1);
+						} else if (pTermination < (packet.szCommand + totalRecvBytes - 1)) {
+							int nCopySize = packetBufferSize - (pTermination - packet.szCommand + 1);
 
 							totalRecvBytes -= (pTermination - packet.szCommand + 1);
 							MoveMemory(packet.szCommand, pTermination+1, nCopySize);
-							FillMemory(packet.szCommand + nCopySize, _countof(packet.szCommand) - nCopySize, 0xFF);
-							DEBUG_PROFILE_MONITOR;
+							FillMemory(packet.szCommand + nCopySize, packetBufferSize - nCopySize, 0xFF);
+
 						} else {
 							bBreak = TRUE;
 							ReportError(_T("[ERROR] 受信メッセージの解析に失敗しています。"));
@@ -660,8 +638,6 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 						DEBUG_PROFILE_MONITOR;
 
 					} while ((pTermination = (LPCSTR)memchr(packet.szCommand, pChildContext->cTermination, totalRecvBytes)) != NULL);
-
-					InterlockedDecrement(&g_ullAccess);
 
 					DEBUG_PROFILE_MONITOR;
 				}
@@ -674,18 +650,39 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 		}
 
 	}
-	WSACloseEvent(hEvent);
+	SafeCloseHandle(hEvent);
 
 	// closesocket
 	shutdown(pChildContext->clientSocket, SD_SEND);
-	recv(pChildContext->clientSocket, packet.szCommand, sizeof(packet.szCommand), 0);
+	recv(pChildContext->clientSocket, packet.szCommand, packetBufferSize, 0);
 	shutdown(pChildContext->clientSocket, SD_BOTH);
 	closesocket(pChildContext->clientSocket);
 
-	CloseChildThreadHandle( pChildContext->hChildThread );
+	RemoveChildThread( pChildContext->hChildThread );
 	free(pChildContext);
 
 	LogDebugMessage(Log_Debug, _T("--- out I4C3DAcceptedThreadProc ---"));
 	
 	return EXIT_SUCCESS;
+}
+
+BOOL CheckNetworkEventError(const WSANETWORKEVENTS& events) {
+	if (events.iErrorCode[FD_ACCEPT_BIT] != 0) {
+		LogDebugMessage(Log_Error, TEXT("FD_ACCEPT_BIT"));
+	} else if (events.iErrorCode[FD_CLOSE_BIT] != 0) {
+		LogDebugMessage(Log_Error, TEXT("FD_CLOSE_BIT"));
+	} else if (events.iErrorCode[FD_CONNECT_BIT] != 0) {
+		LogDebugMessage(Log_Error, TEXT("FD_CONNECT_BIT"));
+	} else if (events.iErrorCode[FD_OOB_BIT] != 0) {
+		LogDebugMessage(Log_Error, TEXT("FD_OOB_BIT"));
+	} else if (events.iErrorCode[FD_QOS_BIT] != 0) {
+		LogDebugMessage(Log_Error, TEXT("FD_QOS_BIT"));
+	} else if (events.iErrorCode[FD_READ_BIT] != 0) {
+		LogDebugMessage(Log_Error, TEXT("FD_READ_BIT"));
+	} else if (events.iErrorCode[FD_WRITE_BIT] != 0) {
+		LogDebugMessage(Log_Error, TEXT("FD_WRITE_BIT"));
+	} else {
+		return TRUE;
+	}
+	return FALSE;
 }

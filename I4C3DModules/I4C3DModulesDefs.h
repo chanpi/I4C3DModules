@@ -14,7 +14,7 @@ class I4C3DAnalyzeXML;
 #define HERE        __FILE__ "("__SLINE__")"
 
 #if DEBUG || _DEBUG
-#define DEBUG_PROFILE_MONITOR	DebugProfileMonitor(HERE)
+#define DEBUG_PROFILE_MONITOR	DebugProfileMonitor(HERE);
 #else
 #define DEBUG_PROFILE_MONITOR
 #endif
@@ -22,8 +22,6 @@ class I4C3DAnalyzeXML;
 const PCSTR COMMAND_TUMBLE	= "tumble";
 const PCSTR COMMAND_TRACK	= "track";
 const PCSTR COMMAND_DOLLY	= "dolly";
-
-//const PCTSTR TAG_TARGET		= _T("target");
 
 typedef struct {
 	HANDLE hProcessorContextThread;
@@ -39,11 +37,13 @@ typedef struct {
 typedef struct {
 	I4C3DAnalyzeXML* pAnalyzer;
 
-	HWND hTargetParentWnd;
+	//HWND hTargetParentWnd;
 	I4C3DControl* pController;
 	HANDLE hThread;			// iPhone/iPodからの受信はワーカースレッドで行う
-	WSAEVENT hStopEvent;
+
+	HANDLE hStopEvent;
 	SOCKET receiver;
+	struct sockaddr_in address;
 
 	I4C3DProcessorContext processorContext;
 	volatile BOOL bIsAlive;

@@ -75,7 +75,10 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri)
 		}
 		// 指定なし、上記以外ならLog_Error
 	}
-	LogInitialize(logLevel);
+	LogFileOpenW("mainmodule", logLevel);
+	if (logLevel <= Log_Info) {
+		LogFileOpenA("mainmoduleinfo", logLevel);	// プロファイル情報書き出しのため
+	}
 
 	// 設定ファイルから終端文字を取得
 	char cTermination = '?';
@@ -134,6 +137,9 @@ void WINAPI I4C3DStop(void)
 	DestroyTargetController();
 	g_Context.bIsAlive = FALSE;
 	g_bStarted = FALSE;
+
+	LogFileCloseW();
+	LogFileCloseA();	// Openしていないときは何もせずTRUEが返る
 }
 
 /**
