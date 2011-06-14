@@ -14,6 +14,7 @@
 static HANDLE g_ChildThreadInfo[8+2];	// 念のため+2。基本的には8クライアントまで。
 static volatile int g_ChildThreadIndex	= 0;
 static int g_ChildThreadInfoLimit		= 0;
+static int g_sleepCount					= 0;
 
 static unsigned __stdcall I4C3DReceiveThreadProc(void* pParam);
 static unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam);
@@ -28,6 +29,7 @@ static BOOL CheckNetworkEventError(const WSANETWORKEVENTS& events);
 
 static CRITICAL_SECTION g_Lock;	// 子スレッドの管理に使用。インクリメント・デクリメントを行う過程にもロックをかける必要があるため。
 
+static const PCTSTR TAG_SLEEPCOUNT		= _T("sleepcount");
 static const PCTSTR TAG_BACKLOG			= _T("backlog");
 static const PCTSTR TAG_PORT			= _T("port");
 static const PCTSTR TAG_TERMINATION		= _T("termination");
@@ -155,6 +157,13 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 {
 	TCHAR szError[I4C3D_BUFFER_SIZE];
 	USHORT uBridgePort = 0;
+
+	// 設定ファイルよりSleepカウントを取得
+	PCTSTR szSleepCount = pContext->pAnalyzer->GetGlobalValue(TAG_SLEEPCOUNT);
+	if (szSleepCount == NULL ||
+		_stscanf_s(szSleepCount, _T("%d"), &g_sleepCount, sizeof(g_sleepCount)) != 1) {
+		g_sleepCount = 1;
+	}
 
 	// 設定ファイルよりBridge Portを取得
 	PCTSTR szPort = pContext->pAnalyzer->GetGlobalValue(TAG_PORT);
@@ -607,7 +616,11 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 
 						// プラグインへ電文転送
 						pChildContext->pContext->pController->Execute(&packet, pTermination-packet.szCommand+1);
-						Sleep(1);
+
+						volatile int i;
+						for (i = 0; i < g_sleepCount; ++i) {
+							Sleep(1);
+						}
 
 						//} else {
 						//	// Hotkey
