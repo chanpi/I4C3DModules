@@ -57,6 +57,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;I4C3DMODULES_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <EnablePREfast>true</EnablePREfast>
       <AdditionalIncludeDirectories>C:\Users\chanpi\Documents\Visual Studio 2010\Projects\Miscellaneous;C:\Users\chanpi\Documents\Visual Studio 2010\Projects\I4C3DDriver\I4C3DDriver;C:\Users\chanpi\Documents\Visual Studio 2010\Projects\XMLParser\XMLParser;C:\Users\chanpi\Documents\Visual Studio 2010\Projects\VirtualMotion\VirtualMotion;C:\Users\chanpi\Documents\Visual Studio 2010\Projects\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
