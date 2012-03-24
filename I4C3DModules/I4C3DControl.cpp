@@ -15,7 +15,7 @@ static const PCTSTR TAG_DOLLYRATE	= _T("dolly_rate");
 
 static const PCTSTR COMMAND_REGISTERMACRO	= _T("registermacro");
 
-static const int MAX_MACROS	= 50;
+static const int MAX_MACROS	= 32;
 
 static TCHAR *g_szController[] = { _T("RTT"), _T("Maya"), _T("Alias"), _T("Showcase"), };
 static vector<I4C3DSoftwareHandler*> *g_pSoftwareHandlerContainer = NULL;
@@ -173,19 +173,19 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		TCHAR szMacroName[16];
 		TCHAR szTmpCommand[I4C3D_BUFFER_SIZE];
 		PCTSTR szMacroValue = NULL;
-		for (int j = 1; j < MAX_MACROS; j++) {
+		for (int j = 1; j <= MAX_MACROS; j++) {
 			_stprintf_s(szMacroName, _countof(szMacroName), _T("MACRO%d"), j);
 			szMacroValue = pContext->pAnalyzer->GetSoftValue(g_szController[i], szMacroName);
 			if (szMacroValue == NULL) {
-				break;
-				//continue;
+				//break;
+				continue;
 			}
 
 			_stprintf_s(szTmpCommand, registerMacroFormat, _T("registermacro"), szMacroName, szMacroValue, cTermination);
 			WideCharToMultiByte(CP_ACP, 0, szTmpCommand, _tcslen(szTmpCommand), packet.szCommand, sizeof(packet.szCommand), NULL, NULL);
 			
-			OutputDebugStringA(packet.szCommand);
-			OutputDebugStringA("\n");
+			//OutputDebugStringA(packet.szCommand);
+			//OutputDebugStringA("\n");
 
 			EnterCriticalSection(&g_lock);
 			sendto(pHandler->m_socketHandler, (const char*)&packet, strlen(packet.szCommand)+4, 0, (const SOCKADDR*)&pHandler->m_address, sizeof(pHandler->m_address));
