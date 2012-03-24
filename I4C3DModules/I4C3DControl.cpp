@@ -184,9 +184,6 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 			_stprintf_s(szTmpCommand, registerMacroFormat, _T("registermacro"), szMacroName, szMacroValue, cTermination);
 			WideCharToMultiByte(CP_ACP, 0, szTmpCommand, _tcslen(szTmpCommand), packet.szCommand, sizeof(packet.szCommand), NULL, NULL);
 			
-			//OutputDebugStringA(packet.szCommand);
-			//OutputDebugStringA("\n");
-
 			EnterCriticalSection(&g_lock);
 			sendto(pHandler->m_socketHandler, (const char*)&packet, strlen(packet.szCommand)+4, 0, (const SOCKADDR*)&pHandler->m_address, sizeof(pHandler->m_address));
 			LeaveCriticalSection(&g_lock);
