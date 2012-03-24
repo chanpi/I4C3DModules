@@ -13,6 +13,10 @@ static const PCTSTR TAG_TUMBLERATE	= _T("tumble_rate");
 static const PCTSTR TAG_TRACKRATE	= _T("track_rate");
 static const PCTSTR TAG_DOLLYRATE	= _T("dolly_rate");
 
+static const PCTSTR COMMAND_REGISTERMACRO	= _T("registermacro");
+
+static const int MAX_MACROS	= 50;
+
 static TCHAR *g_szController[] = { _T("RTT"), _T("Maya"), _T("Alias"), _T("Showcase"), };
 static vector<I4C3DSoftwareHandler*> *g_pSoftwareHandlerContainer = NULL;
 
@@ -91,6 +95,11 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 
 	TCHAR szError[I4C3D_BUFFER_SIZE] = {0};
 	int count = _countof(g_szController);
+	
+	// マクロ登録のフォーマット文をTCHAR*で作成
+	TCHAR registerMacroFormat[I4C3D_BUFFER_SIZE];
+	MultiByteToWideChar(CP_ACP, 0, g_registerMacroFormat, -1, registerMacroFormat, _countof(registerMacroFormat));
+
 	for (int i = 0; i < count; ++i) {
 		PCTSTR szModifierKey = NULL;
 		char cszModifierKey[I4C3D_BUFFER_SIZE] = {0};
@@ -158,6 +167,30 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		EnterCriticalSection(&g_lock);
 		sendto(pHandler->m_socketHandler, (const char*)&packet, strlen(packet.szCommand)+4, 0, (const SOCKADDR*)&pHandler->m_address, sizeof(pHandler->m_address));
 		LeaveCriticalSection(&g_lock);
+
+		// 各Plugin.exeへキーマクロ設定の電文を送信 TODO
+		// 各ソフトウェアタグの<key name="MACROx">value</key>を読み取る
+		TCHAR szMacroName[16];
+		TCHAR szTmpCommand[I4C3D_BUFFER_SIZE];
+		PCTSTR szMacroValue = NULL;
+		for (int j = 1; j < MAX_MACROS; j++) {
+			_stprintf_s(szMacroName, _countof(szMacroName), _T("MACRO%d"), j);
+			szMacroValue = pContext->pAnalyzer->GetSoftValue(g_szController[i], szMacroName);
+			if (szMacroValue == NULL) {
+				break;
+				//continue;
+			}
+
+			_stprintf_s(szTmpCommand, registerMacroFormat, _T("registermacro"), szMacroName, szMacroValue, cTermination);
+			WideCharToMultiByte(CP_ACP, 0, szTmpCommand, _tcslen(szTmpCommand), packet.szCommand, sizeof(packet.szCommand), NULL, NULL);
+			
+			OutputDebugStringA(packet.szCommand);
+			OutputDebugStringA("\n");
+
+			EnterCriticalSection(&g_lock);
+			sendto(pHandler->m_socketHandler, (const char*)&packet, strlen(packet.szCommand)+4, 0, (const SOCKADDR*)&pHandler->m_address, sizeof(pHandler->m_address));
+			LeaveCriticalSection(&g_lock);
+		}
 	}
 	m_bInitialized = TRUE;
 	return m_bInitialized;
