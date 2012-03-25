@@ -12,14 +12,17 @@ static const PCTSTR TAG_UDP_PORT	= _T("udp_port");
 static const PCTSTR TAG_TUMBLERATE	= _T("tumble_rate");
 static const PCTSTR TAG_TRACKRATE	= _T("track_rate");
 static const PCTSTR TAG_DOLLYRATE	= _T("dolly_rate");
+static const PCTSTR TAG_RTT4TCPMODE	= _T("rtt4tcp_mode");
 
 static const PCTSTR COMMAND_REGISTERMACRO	= _T("registermacro");
 
 static const int MAX_MACROS	= 32;
 
-static TCHAR *g_szController[] = { _T("RTT"), _T("Maya"), _T("Alias"), _T("Showcase"), };
+static TCHAR *g_szController[] = { _T("RTT"), _T("Maya"), _T("Alias"), _T("Showcase"), _T("RTT4TCP"), };
+typedef enum { INDEX_RTT, INDEX_MAYA, INDEX_ALIAS, INDEX_SHOWCASE, INDEX_RTT4TCP } CONTROLLER_INDEX;
 static vector<I4C3DSoftwareHandler*> *g_pSoftwareHandlerContainer = NULL;
 
+static BOOL g_bRTT4TCPMode = false;
 static CRITICAL_SECTION g_lock;
 
 I4C3DControl::I4C3DControl(void) : m_bInitialized(FALSE)
@@ -94,13 +97,20 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 	}
 
 	TCHAR szError[I4C3D_BUFFER_SIZE] = {0};
-	int count = _countof(g_szController);
+	int i = 0;
+	int count = _countof(g_szController) - 1;
+	// RTT4TCPがONの時はRTT4TCPプラグインのみ動作させる
+	if (_tcsicmp(pContext->pAnalyzer->GetGlobalValue(TAG_RTT4TCPMODE), _T("on")) == 0) {
+		g_bRTT4TCPMode = TRUE;
+		i = INDEX_RTT4TCP;
+		count++;
+	}
 	
 	// マクロ登録のフォーマット文をTCHAR*で作成
-	TCHAR registerMacroFormat[I4C3D_BUFFER_SIZE];
+	TCHAR registerMacroFormat[I4C3D_BUFFER_SIZE] = {0};
 	MultiByteToWideChar(CP_ACP, 0, g_registerMacroFormat, -1, registerMacroFormat, _countof(registerMacroFormat));
 
-	for (int i = 0; i < count; ++i) {
+	for (; i < count; ++i) {
 		PCTSTR szModifierKey = NULL;
 		char cszModifierKey[I4C3D_BUFFER_SIZE] = {0};
 		double fTumbleRate = 1.0;
@@ -134,7 +144,9 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		// 修飾キー
 		szModifierKey = pContext->pAnalyzer->GetSoftValue(g_szController[i], TAG_MODIFIER);
 		if (szModifierKey == NULL) {
-			LogDebugMessage(Log_Error, _T("設定ファイルに修飾キーを設定してください。<I4C3DControl::Initialize>"));
+			if (i != INDEX_RTT4TCP) {
+				LogDebugMessage(Log_Error, _T("設定ファイルに修飾キーを設定してください。<I4C3DControl::Initialize>"));
+			}
 			strcpy_s(cszModifierKey, sizeof(cszModifierKey), "NULL");	// "NULL"の場合は、それぞれのプラグインでデフォルト値に設定する。
 		} else {
 #if UNICODE || _UNICODE
@@ -170,8 +182,8 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 
 		// 各Plugin.exeへキーマクロ設定の電文を送信 TODO
 		// 各ソフトウェアタグの<key name="MACROx">value</key>を読み取る
-		TCHAR szMacroName[16];
-		TCHAR szTmpCommand[I4C3D_BUFFER_SIZE];
+		TCHAR szMacroName[16] = {0};
+		TCHAR szTmpCommand[I4C3D_BUFFER_SIZE] = {0};
 		PCTSTR szMacroValue = NULL;
 		for (int j = 1; j <= MAX_MACROS; j++) {
 			_stprintf_s(szMacroName, _countof(szMacroName), _T("MACRO%d"), j);
@@ -181,6 +193,7 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 				continue;
 			}
 
+			ZeroMemory(&packet, sizeof(packet));
 			_stprintf_s(szTmpCommand, registerMacroFormat, _T("registermacro"), szMacroName, szMacroValue, cTermination);
 			WideCharToMultiByte(CP_ACP, 0, szTmpCommand, _tcslen(szTmpCommand), packet.szCommand, sizeof(packet.szCommand), NULL, NULL);
 			
@@ -237,6 +250,13 @@ void I4C3DControl::UnInitialize(void)
  */
 void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 {
+	if (g_bRTT4TCPMode) {
+		EnterCriticalSection(&g_lock);
+		sendto((*g_pSoftwareHandlerContainer)[0]->m_socketHandler, (const char*)pPacket, commandLen+4, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[0]->m_address), sizeof((*g_pSoftwareHandlerContainer)[0]->m_address));
+		LeaveCriticalSection(&g_lock);
+		return;
+	}
+
 	TCHAR szWindowTitle[I4C3D_BUFFER_SIZE] = {0};
 	HWND hForeground = GetForegroundWindow();
 	if (IsIconic(hForeground)) {
