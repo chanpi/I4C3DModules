@@ -18,8 +18,7 @@ static const PCTSTR COMMAND_REGISTERMACRO	= _T("registermacro");
 
 static const int MAX_MACROS	= 32;
 
-static TCHAR *g_szController[] = { _T("RTT"), _T("Maya"), _T("Alias"), _T("Showcase"), _T("RTT4TCP"), };
-typedef enum { INDEX_RTT, INDEX_MAYA, INDEX_ALIAS, INDEX_SHOWCASE, INDEX_RTT4TCP } CONTROLLER_INDEX;
+static TCHAR *g_szController[] = { _T("RTT"), _T("Maya"), _T("Alias"), _T("Showcase"), };
 static vector<I4C3DSoftwareHandler*> *g_pSoftwareHandlerContainer = NULL;
 
 static BOOL g_bRTT4TCPMode = false;
@@ -97,20 +96,18 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 	}
 
 	TCHAR szError[I4C3D_BUFFER_SIZE] = {0};
-	int i = 0;
-	int count = _countof(g_szController) - 1;
-	// RTT4TCPがONの時はRTT4TCPプラグインのみ動作させる
+	int count = _countof(g_szController);
+	// RTT4TCPモードがONの時はRTTプラグインのみ動作させる
 	if (_tcsicmp(pContext->pAnalyzer->GetGlobalValue(TAG_RTT4TCPMODE), _T("on")) == 0) {
 		g_bRTT4TCPMode = TRUE;
-		i = INDEX_RTT4TCP;
-		count++;
+		count = 1;
 	}
 	
 	// マクロ登録のフォーマット文をTCHAR*で作成
 	TCHAR registerMacroFormat[I4C3D_BUFFER_SIZE] = {0};
 	MultiByteToWideChar(CP_ACP, 0, g_registerMacroFormat, -1, registerMacroFormat, _countof(registerMacroFormat));
 
-	for (; i < count; ++i) {
+	for (int i = 0; i < count; ++i) {
 		PCTSTR szModifierKey = NULL;
 		char cszModifierKey[I4C3D_BUFFER_SIZE] = {0};
 		double fTumbleRate = 1.0;
@@ -144,9 +141,7 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		// 修飾キー
 		szModifierKey = pContext->pAnalyzer->GetSoftValue(g_szController[i], TAG_MODIFIER);
 		if (szModifierKey == NULL) {
-			if (i != INDEX_RTT4TCP) {
-				LogDebugMessage(Log_Error, _T("設定ファイルに修飾キーを設定してください。<I4C3DControl::Initialize>"));
-			}
+			LogDebugMessage(Log_Error, _T("設定ファイルに修飾キーを設定してください。<I4C3DControl::Initialize>"));
 			strcpy_s(cszModifierKey, sizeof(cszModifierKey), "NULL");	// "NULL"の場合は、それぞれのプラグインでデフォルト値に設定する。
 		} else {
 #if UNICODE || _UNICODE
