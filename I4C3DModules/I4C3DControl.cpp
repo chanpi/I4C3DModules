@@ -1,4 +1,5 @@
 #include "StdAfx.h"
+#include "I4C3DCommon.h"
 #include "I4C3DControl.h"
 #include "Miscellaneous.h"
 #include "I4C3DAnalyzeXML.h"
@@ -16,12 +17,11 @@ static const PCTSTR TAG_RTT4TCPMODE	= _T("rtt4tcp_mode");
 
 static const PCTSTR COMMAND_REGISTERMACRO	= _T("registermacro");
 
-static const int MAX_MACROS	= 32;
-
-static TCHAR *g_szController[] = { _T("RTT"), _T("Maya"), _T("Alias"), _T("Showcase"), };
+static TCHAR *g_szController[] = { _T("RTT"), _T("Maya"), _T("Alias"), _T("Showcase"), _T("RTT4EC"), };
+static enum { RTTPlugin, MayaPlugin, AliasPlugin, ShowcasePlugin, RTT4ECPlugin, } PluginIndex;
 static vector<I4C3DSoftwareHandler*> *g_pSoftwareHandlerContainer = NULL;
 
-static BOOL g_bRTT4TCPMode = false;
+static BOOL g_bRTT4ECMode = FALSE;
 static CRITICAL_SECTION g_lock;
 
 I4C3DControl::I4C3DControl(void) : m_bInitialized(FALSE)
@@ -96,18 +96,20 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 	}
 
 	TCHAR szError[I4C3D_BUFFER_SIZE] = {0};
-	int count = _countof(g_szController);
+	int i = 0;
+	int count = _countof(g_szController) - 1;
 	// RTT4TCPモードがONの時はRTTプラグインのみ動作させる
 	if (_tcsicmp(pContext->pAnalyzer->GetGlobalValue(TAG_RTT4TCPMODE), _T("on")) == 0) {
-		g_bRTT4TCPMode = TRUE;
-		count = 1;
+		g_bRTT4ECMode = TRUE;
+		i = RTT4ECPlugin;
+		count++;
 	}
 	
 	// マクロ登録のフォーマット文をTCHAR*で作成
 	TCHAR registerMacroFormat[I4C3D_BUFFER_SIZE] = {0};
 	MultiByteToWideChar(CP_ACP, 0, g_registerMacroFormat, -1, registerMacroFormat, _countof(registerMacroFormat));
 
-	for (int i = 0; i < count; ++i) {
+	for (; i < count; ++i) {
 		PCTSTR szModifierKey = NULL;
 		char cszModifierKey[I4C3D_BUFFER_SIZE] = {0};
 		double fTumbleRate = 1.0;
@@ -141,7 +143,9 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		// 修飾キー
 		szModifierKey = pContext->pAnalyzer->GetSoftValue(g_szController[i], TAG_MODIFIER);
 		if (szModifierKey == NULL) {
-			LogDebugMessage(Log_Error, _T("設定ファイルに修飾キーを設定してください。<I4C3DControl::Initialize>"));
+			if (!g_bRTT4ECMode) {
+				LogDebugMessage(Log_Error, _T("設定ファイルに修飾キーを設定してください。<I4C3DControl::Initialize>"));
+			}
 			strcpy_s(cszModifierKey, sizeof(cszModifierKey), "NULL");	// "NULL"の場合は、それぞれのプラグインでデフォルト値に設定する。
 		} else {
 #if UNICODE || _UNICODE
@@ -177,6 +181,9 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 
 		// 各Plugin.exeへキーマクロ設定の電文を送信 TODO
 		// 各ソフトウェアタグの<key name="MACROx">value</key>を読み取る
+		if (i == RTT4ECPlugin) {	// RTT4ECPluginのときはF710TCPControlが管理する
+			continue;
+		}
 		TCHAR szMacroName[16] = {0};
 		TCHAR szTmpCommand[I4C3D_BUFFER_SIZE] = {0};
 		PCTSTR szMacroValue = NULL;
@@ -245,7 +252,7 @@ void I4C3DControl::UnInitialize(void)
  */
 void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 {
-	if (g_bRTT4TCPMode) {
+	if (g_bRTT4ECMode) {
 		EnterCriticalSection(&g_lock);
 		sendto((*g_pSoftwareHandlerContainer)[0]->m_socketHandler, (const char*)pPacket, commandLen+4, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[0]->m_address), sizeof((*g_pSoftwareHandlerContainer)[0]->m_address));
 		LeaveCriticalSection(&g_lock);
