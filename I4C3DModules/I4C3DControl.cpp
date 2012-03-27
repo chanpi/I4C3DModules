@@ -22,7 +22,7 @@ static enum { RTTPlugin, MayaPlugin, AliasPlugin, ShowcasePlugin, RTT4ECPlugin, 
 static vector<I4C3DSoftwareHandler*> *g_pSoftwareHandlerContainer = NULL;
 
 static BOOL g_bRTT4ECMode = FALSE;
-static CRITICAL_SECTION g_lock;
+static CRITICAL_SECTION g_lock = {0};
 
 I4C3DControl::I4C3DControl(void) : m_bInitialized(FALSE)
 {
