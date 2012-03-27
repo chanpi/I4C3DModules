@@ -96,20 +96,17 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 	}
 
 	TCHAR szError[I4C3D_BUFFER_SIZE] = {0};
-	int i = 0;
-	int count = _countof(g_szController) - 1;
+	int count = _countof(g_szController);
 	// RTT4TCPモードがONの時はRTTプラグインのみ動作させる
 	if (_tcsicmp(pContext->pAnalyzer->GetGlobalValue(TAG_RTT4TCPMODE), _T("on")) == 0) {
 		g_bRTT4ECMode = TRUE;
-		i = RTT4ECPlugin;
-		count++;
 	}
 	
 	// マクロ登録のフォーマット文をTCHAR*で作成
 	TCHAR registerMacroFormat[I4C3D_BUFFER_SIZE] = {0};
 	MultiByteToWideChar(CP_ACP, 0, g_registerMacroFormat, -1, registerMacroFormat, _countof(registerMacroFormat));
 
-	for (; i < count; ++i) {
+	for (int i = 0; i < count; ++i) {
 		PCTSTR szModifierKey = NULL;
 		char cszModifierKey[I4C3D_BUFFER_SIZE] = {0};
 		double fTumbleRate = 1.0;
@@ -254,7 +251,7 @@ void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 {
 	if (g_bRTT4ECMode) {
 		EnterCriticalSection(&g_lock);
-		sendto((*g_pSoftwareHandlerContainer)[0]->m_socketHandler, (const char*)pPacket, commandLen+4, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[0]->m_address), sizeof((*g_pSoftwareHandlerContainer)[0]->m_address));
+		sendto((*g_pSoftwareHandlerContainer)[RTT4ECPlugin]->m_socketHandler, (const char*)pPacket, commandLen+4, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[RTT4ECPlugin]->m_address), sizeof((*g_pSoftwareHandlerContainer)[RTT4ECPlugin]->m_address));
 		LeaveCriticalSection(&g_lock);
 		return;
 	}
