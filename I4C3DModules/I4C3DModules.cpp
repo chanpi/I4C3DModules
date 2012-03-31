@@ -7,6 +7,7 @@
 #include "I4C3DAnalyzeXML.h"
 #include "I4C3DControl.h"
 #include "Miscellaneous.h"
+#include "ErrorCodeList.h"
 
 static I4C3DContext g_Context = {0};
 static I4C3DCore g_Core;
@@ -47,6 +48,7 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri)
 	if (g_bStarted) {
 		return TRUE;
 	}
+
 	// 必要な初期化
 	ZeroMemory(&g_Core, sizeof(g_Core));
 	ZeroMemory(&g_Context, sizeof(g_Context));
@@ -54,12 +56,12 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri)
 	if (g_Context.pAnalyzer == NULL) {
 		ReportError(_T("[ERROR] メモリの確保に失敗しています。初期化は行われません。"));
 		I4C3DStop();
-		return FALSE;
+		exit(EXIT_SYSTEM_ERROR);
 	}
 	if (!g_Context.pAnalyzer->LoadXML(szXMLUri)) {
 		ReportError(_T("[ERROR] XMLのロードに失敗しています。初期化は行われません。"));
 		I4C3DStop();
-		return FALSE;
+		exit(EXIT_INVALID_FILE_CONFIGURATION);
 	}
 
 	// 設定ファイルからログレベルを取得
@@ -100,7 +102,7 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri)
 
 	if (!PrepareTargetController(cTermination)) {
 		I4C3DStop();
-		return FALSE;
+		exit(EXIT_SYSTEM_ERROR);
 	}
 
 	g_bStarted = g_Core.Start(&g_Context);

@@ -140,7 +140,7 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		// 修飾キー
 		szModifierKey = pContext->pAnalyzer->GetSoftValue(g_szController[i], TAG_MODIFIER);
 		if (szModifierKey == NULL) {
-			if (!g_bRTT4ECMode) {
+			if (!g_bRTT4ECMode && i != RTT4ECPlugin) {
 				LogDebugMessage(Log_Error, _T("設定ファイルに修飾キーを設定してください。<I4C3DControl::Initialize>"));
 			}
 			strcpy_s(cszModifierKey, sizeof(cszModifierKey), "NULL");	// "NULL"の場合は、それぞれのプラグインでデフォルト値に設定する。
@@ -170,15 +170,17 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		}
 
 		// 各Plugin.exeへの電文作成・送信
-		sprintf_s(packet.szCommand, g_initCommandFormat, "init", cszModifierKey, fTumbleRate, fTrackRate, fDollyRate, cTermination);
+		if ((g_bRTT4ECMode && i == RTT4ECPlugin) || (!g_bRTT4ECMode && i != RTT4ECPlugin)) {
+			sprintf_s(packet.szCommand, g_initCommandFormat, "init", cszModifierKey, fTumbleRate, fTrackRate, fDollyRate, cTermination);
 
-		EnterCriticalSection(&g_lock);
-		sendto(pHandler->m_socketHandler, (const char*)&packet, strlen(packet.szCommand)+4, 0, (const SOCKADDR*)&pHandler->m_address, sizeof(pHandler->m_address));
-		LeaveCriticalSection(&g_lock);
+			EnterCriticalSection(&g_lock);
+			sendto(pHandler->m_socketHandler, (const char*)&packet, strlen(packet.szCommand)+4, 0, (const SOCKADDR*)&pHandler->m_address, sizeof(pHandler->m_address));
+			LeaveCriticalSection(&g_lock);
+		}
 
 		// 各Plugin.exeへキーマクロ設定の電文を送信 TODO
 		// 各ソフトウェアタグの<key name="MACROx">value</key>を読み取る
-		if (i == RTT4ECPlugin) {	// RTT4ECPluginのときはF710TCPControlが管理する
+		if (g_bRTT4ECMode || i == RTT4ECPlugin) {	// RTT4ECPluginのときはF710TCPControlが管理する
 			continue;
 		}
 		TCHAR szMacroName[16] = {0};

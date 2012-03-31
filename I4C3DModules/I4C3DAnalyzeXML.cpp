@@ -120,7 +120,7 @@ BOOL I4C3DAnalyzeXML::LoadXML(PCTSTR szXMLUri)
 PCTSTR I4C3DAnalyzeXML::GetGlobalValue(PCTSTR szKey)
 {
 	if (!ReadGlobalTag()) {
-		ReportError(_T("[ERROR] globalタグの読み込みに失敗しています。"));
+		LogDebugMessage(Log_Error, _T("[ERROR] globalタグの読み込みに失敗しています。"));
 		return NULL;
 	}
 
@@ -149,7 +149,7 @@ PCTSTR I4C3DAnalyzeXML::GetSoftValue(PCTSTR szSoftName, PCTSTR szKey)
 	//	return NULL;
 	//}
 	if (!this->ReadSoftsTag()) {
-		ReportError(_T("[ERROR] softsタグの読み込みに失敗しています。"));
+		LogDebugMessage(Log_Error, _T("[ERROR] softsタグの読み込みに失敗しています。"));
 		return NULL;
 	}
 

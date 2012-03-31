@@ -7,6 +7,7 @@
 #include "I4C3DLoadMonitor.h"
 #include "I4C3DCommon.h"
 #include "Miscellaneous.h"
+#include "ErrorCodeList.h"
 
 #include <process.h>
 
@@ -169,12 +170,12 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 	PCTSTR szPort = pContext->pAnalyzer->GetGlobalValue(TAG_PORT);
 	if (szPort == NULL) {
 		LogDebugMessage(Log_Error, _T("設定ファイルにポート番号を指定してください。 <I4C3DCore::Start>"));
-		return FALSE;
+		exit(EXIT_INVALID_FILE_CONFIGURATION);
 	}
 	if (_stscanf_s(szPort, _T("%hu"), &uBridgePort, sizeof(uBridgePort)) != 1) {
 		_stprintf_s(szError, _countof(szError), _T("ポート番号の変換に失敗しています。 <I4C3DCore::Start>\n[%s]"), szPort);
 		LogDebugMessage(Log_Error, szError);
-		return FALSE;
+		exit(EXIT_INVALID_FILE_CONFIGURATION);
 	}
 
 	// 設定ファイルより接続クライアント数を取得
@@ -191,25 +192,25 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 	pContext->receiver = accessor.InitializeTCPSocket(&pContext->address, NULL, FALSE, uBridgePort);
 	if (pContext->receiver == INVALID_SOCKET) {
 		LogDebugMessage(Log_Error, _T("InitializeSocket <I4C3DCore::Start>"));
-		return FALSE;
+		exit(EXIT_SOCKET_ERROR);
 	}
 
 	// 待ちうけ終了イベント作成
 	pContext->hStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	if (pContext->hStopEvent == NULL) {
 		_stprintf_s(szError, _countof(szError), _T("[ERROR] CreateEvent() : %d"), GetLastError());
-		ReportError(szError);
+		LogDebugMessage(Log_Error, szError);
 		closesocket(pContext->receiver);
-		return FALSE;
+		exit(EXIT_SYSTEM_ERROR);
 	}
 
 	pContext->hThread = (HANDLE)_beginthreadex(NULL, 0, &I4C3DReceiveThreadProc, (void*)pContext, CREATE_SUSPENDED, NULL/*&pContext->uThreadID*/);
 	if (pContext->hThread == INVALID_HANDLE_VALUE) {
 		_stprintf_s(szError, _countof(szError), _T("[ERROR] _beginthreadex() : %d"), GetLastError());
-		ReportError(szError);
+		LogDebugMessage(Log_Error, szError);
 		SafeCloseHandle(pContext->hStopEvent);
 		closesocket(pContext->receiver);
-		return FALSE;
+		exit(EXIT_SYSTEM_ERROR);
 	}
 
 	ResumeThread(pContext->hThread);
@@ -441,12 +442,15 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 	hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 	if (hEvent == NULL) {
 		_stprintf_s(szError, _countof(szError), _T("[ERROR] CreateEvent() : %d <I4C3DCore::I4C3DReceiveThreadProc()>"), GetLastError());
-		ReportError(szError);
-		return FALSE;
+		LogDebugMessage(Log_Error, szError);
+		exit(EXIT_SYSTEM_ERROR);
 	}
 
 	I4C3DAccessor accessor;
-	accessor.SetListeningSocket(pContext->receiver, &pContext->address, g_backlog, hEvent, FD_ACCEPT | FD_CLOSE);
+	if (!accessor.SetListeningSocket(pContext->receiver, &pContext->address, g_backlog, hEvent, FD_ACCEPT | FD_CLOSE)) {
+		SafeCloseHandle(hEvent);
+		exit(EXIT_SOCKET_ERROR);
+	}
 
 	hEventArray[0] = hEvent;
 	hEventArray[1] = pContext->hStopEvent;
@@ -455,7 +459,7 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 		dwResult = WSAWaitForMultipleEvents(2, hEventArray, FALSE, WSA_INFINITE, FALSE);
 		if (dwResult == WSA_WAIT_FAILED) {
 			_stprintf_s(szError, _countof(szError), _T("[ERROR] WSA_WAIT_FAILED : %d <I4C3DCore::I4C3DReceiveThreadProc()>"), WSAGetLastError());
-			ReportError(szError);
+			LogDebugMessage(Log_Error, szError);
 			break;
 		}
 
@@ -474,7 +478,7 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 				newClient = accept(pContext->receiver, (SOCKADDR*)&address, &nLen);
 				if (newClient == INVALID_SOCKET) {
 					_stprintf_s(szError, _countof(szError), _T("[ERROR] accept : %d <I4C3DCore::I4C3DReceiveThreadProc()>"), WSAGetLastError());
-					ReportError(szError);
+					LogDebugMessage(Log_Error, szError);
 					break;
 				}
 
@@ -482,7 +486,7 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 				pChildContext = (I4C3DChildContext*)calloc(1, sizeof(I4C3DChildContext));
 				if (pChildContext == NULL) {
 					_stprintf_s(szError, _countof(szError), _T("[ERROR] Create child thread. calloc : %d"), GetLastError());
-					ReportError(szError);
+					LogDebugMessage(Log_Error, szError);
 					break;
 				}
 
@@ -497,7 +501,7 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 				hChildThread = (HANDLE)_beginthreadex(NULL, 0, I4C3DAcceptedThreadProc, pChildContext, CREATE_SUSPENDED, &uThreadID);
 				if (hChildThread == INVALID_HANDLE_VALUE) {
 					_stprintf_s(szError, _countof(szError), _T("[ERROR] Create child thread. : %d"), GetLastError());
-					ReportError(szError);
+					LogDebugMessage(Log_Error, szError);
 					break;
 				} else {
 					pChildContext->hChildThread = hChildThread;
@@ -543,7 +547,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 	hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 	if (hEvent == NULL) {
 		_stprintf_s(szError, _countof(szError), _T("[ERROR] CreateEvent() : %d"), GetLastError());
-		ReportError(szError);
+		LogDebugMessage(Log_Error, szError);
 
 		shutdown(pChildContext->clientSocket, SD_SEND);
 		recv(pChildContext->clientSocket, packet.szCommand, packetBufferSize, 0);
@@ -577,7 +581,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 		if (dwResult - WSA_WAIT_EVENT_0 == 0) {
 			if (WSAEnumNetworkEvents(pChildContext->clientSocket, hEvent, &events) != 0) {
 				_stprintf_s(szError, _countof(szError), _T("[ERROR] WSAEnumNetworkEvents() : %d <I4C3DCore::I4C3DAcceptedThreadProc>"), WSAGetLastError());
-				ReportError(szError);
+				LogDebugMessage(Log_Error, szError);
 				break;
 			}
 
@@ -592,7 +596,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 						continue;
 					} else {
 						_stprintf_s(szError, _countof(szError), _T("[ERROR] recv : %d <I4C3DCore::I4C3DAcceptedThreadProc>"), WSAGetLastError());
-						ReportError(szError);
+						LogDebugMessage(Log_Error, szError);
 					}
 					break;
 
@@ -644,7 +648,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 
 						} else {
 							bBreak = TRUE;
-							ReportError(_T("[ERROR] 受信メッセージの解析に失敗しています。"));
+							LogDebugMessage(Log_Error, _T("[ERROR] 受信メッセージの解析に失敗しています。"));
 							break;
 						}
 

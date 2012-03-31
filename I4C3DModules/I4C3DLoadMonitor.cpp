@@ -38,7 +38,7 @@ unsigned int __stdcall I4C3DProcessorContextThreadProc(void *pParam)
 #if DEBUG || _DEBUG
 		if (pContext->processorContext.uNapTime > 0) {
 			TCHAR szBuf[32];
-			_stprintf_s(szBuf, 32, L"%d msec sleep\n", pContext->processorContext.uNapTime);
+			_stprintf_s(szBuf, 32, _T("%d msec sleep\n"), pContext->processorContext.uNapTime);
 			OutputDebugString(szBuf);
 		}
 #endif

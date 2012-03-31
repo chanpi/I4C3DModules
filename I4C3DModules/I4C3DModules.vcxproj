@@ -56,7 +56,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;I4C3DMODULES_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <EnablePREfast>true</EnablePREfast>
-      <AdditionalIncludeDirectories>$(SolutionDir)\..\Miscellaneous;$(SolutionDir)\..\I4C3DDriver\I4C3DDriver;$(SolutionDir)\..\XMLParser\XMLParser;$(SolutionDir)\..\VirtualMotion\VirtualMotion;$(SolutionDir)\..\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\..\Miscellaneous;$(SolutionDir)\..\I4C3DDriver\I4C3DDriver;$(SolutionDir)\..\XMLParser\XMLParser;$(SolutionDir)\..\VirtualMotion\VirtualMotion;$(SolutionDir)\..\I4C3DKeysHook\I4C3DKeysHook;$(SolutionDir)\..\I4C3DLauncher\I4C3DLauncher;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -75,7 +75,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;I4C3DMODULES_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <EnablePREfast>true</EnablePREfast>
-      <AdditionalIncludeDirectories>$(SolutionDir)\..\Miscellaneous;$(SolutionDir)\..\I4C3DDriver\I4C3DDriver;$(SolutionDir)\..\XMLParser\XMLParser;$(SolutionDir)\..\VirtualMotion\VirtualMotion;$(SolutionDir)\..\I4C3DKeysHook\I4C3DKeysHook;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\..\Miscellaneous;$(SolutionDir)\..\I4C3DDriver\I4C3DDriver;$(SolutionDir)\..\XMLParser\XMLParser;$(SolutionDir)\..\VirtualMotion\VirtualMotion;$(SolutionDir)\..\I4C3DKeysHook\I4C3DKeysHook;$(SolutionDir)\..\I4C3DLauncher\I4C3DLauncher;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
