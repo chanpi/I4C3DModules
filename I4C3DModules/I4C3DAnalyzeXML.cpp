@@ -1,9 +1,16 @@
 #include "StdAfx.h"
 #include "I4C3DModulesDefs.h"
 #include "I4C3DAnalyzeXML.h"
-#include "Miscellaneous.h"
+#include "Misc.h"
 #include "XMLParser.h"
+#include "SharedConstants.h"
 #include <vector>
+
+#if UNICODE || _UNICODE
+static LPCTSTR g_FILE = __FILEW__;
+#else
+static LPCTSTR g_FILE = __FILE__;
+#endif
 
 extern TCHAR szTitle[MAX_LOADSTRING];
 
@@ -91,12 +98,9 @@ BOOL I4C3DAnalyzeXML::LoadXML(PCTSTR szXMLUri)
 {
 	CleanupRootElement();
 	if (!PathFileExists(szXMLUri)) {
-		{
-			TCHAR szError[I4C3D_BUFFER_SIZE];
-			_stprintf_s(szError, _countof(szError), _T("指定したパスに設定ファイルが存在しません[%s]。<I4C3DAnalyzeXML::LoadXML>"), szXMLUri);
-			LogDebugMessage(Log_Error, szError);
-		}
-		return FALSE;
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_XML_LOAD), GetLastError(), g_FILE, __LINE__);
+		exit(EXIT_FILE_NOT_FOUND);
+		//return FALSE;
 	}
 	g_bInitialized = Initialize(&g_pRootElement, szXMLUri);
 	return g_bInitialized;
@@ -120,7 +124,7 @@ BOOL I4C3DAnalyzeXML::LoadXML(PCTSTR szXMLUri)
 PCTSTR I4C3DAnalyzeXML::GetGlobalValue(PCTSTR szKey)
 {
 	if (!ReadGlobalTag()) {
-		LogDebugMessage(Log_Error, _T("[ERROR] globalタグの読み込みに失敗しています。"));
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_XML_TAG_GLOBAL), GetLastError(), g_FILE, __LINE__);
 		return NULL;
 	}
 
@@ -149,7 +153,7 @@ PCTSTR I4C3DAnalyzeXML::GetSoftValue(PCTSTR szSoftName, PCTSTR szKey)
 	//	return NULL;
 	//}
 	if (!this->ReadSoftsTag()) {
-		LogDebugMessage(Log_Error, _T("[ERROR] softsタグの読み込みに失敗しています。"));
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_XML_TAG_SOFTS), GetLastError(), g_FILE, __LINE__);
 		return NULL;
 	}
 
@@ -218,7 +222,7 @@ BOOL I4C3DAnalyzeXML::ReadSoftsTag(void)
 		IXMLDOMNode* pSofts = NULL;
 		IXMLDOMNodeList* pSoftsList = NULL;
 		if (!GetDOMTree(g_pRootElement, TAG_SOFTS, &pSofts)) {
-			LogDebugMessage(Log_Error, _T("softsタグのDOM取得に失敗しています。<I4C3DAnalyzeXML::ReadSoftsTag>"));
+			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_XML_TAG_SOFTS_DOM), GetLastError(), g_FILE, __LINE__);
 			return FALSE;
 		}
 

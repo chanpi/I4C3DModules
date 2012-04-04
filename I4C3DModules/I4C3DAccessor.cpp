@@ -1,8 +1,14 @@
 #include "StdAfx.h"
 #include "I4C3DAccessor.h"
 #include "I4C3DModulesDefs.h"
-#include "Miscellaneous.h"
-#include "ErrorCodeList.h"
+#include "Misc.h"
+#include "SharedConstants.h"
+
+#if UNICODE || _UNICODE
+static LPCTSTR g_FILE = __FILEW__;
+#else
+static LPCTSTR g_FILE = __FILE__;
+#endif
 
 I4C3DAccessor::I4C3DAccessor(void)
 {
@@ -40,12 +46,10 @@ I4C3DAccessor::~I4C3DAccessor(void)
 SOCKET I4C3DAccessor::InitializeTCPSocket(struct sockaddr_in* pAddress, LPCSTR szAddress, BOOL bSend, USHORT uPort)
 {
 	SOCKET socketHandler;
-	TCHAR szError[I4C3D_BUFFER_SIZE];
 
 	socketHandler = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (socketHandler == INVALID_SOCKET) {
-		_stprintf_s(szError, _countof(szError), _T("[ERROR] socket() : %d"), WSAGetLastError());
-		LogDebugMessage(Log_Error, szError);
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_INVALID), WSAGetLastError(), g_FILE, __LINE__);
 		exit(EXIT_SOCKET_ERROR);
 	}
 
@@ -64,14 +68,11 @@ BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct
 	BOOL bUse = TRUE;
 	setsockopt(socketHandler, SOL_SOCKET, SO_REUSEADDR, (const char*)&bUse, sizeof(bUse));
 	int nResult = 0;
-
-	TCHAR szError[I4C3D_BUFFER_SIZE] = {0};
-
+	
 	// bind
 	nResult = bind(socketHandler, (const SOCKADDR*)pAddress, sizeof(*pAddress));
 	if (nResult == SOCKET_ERROR) {
-		_stprintf_s(szError, _countof(szError), _T("[ERROR] bind() : %d"), WSAGetLastError());
-		LogDebugMessage(Log_Error, szError);
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_BIND), WSAGetLastError(), g_FILE, __LINE__);
 		closesocket(socketHandler);
 		exit(EXIT_SOCKET_ERROR);
 	}
@@ -79,8 +80,7 @@ BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct
 	// select
 	nResult = WSAEventSelect(socketHandler, hEventObject, lNetworkEvents);
 	if (nResult == SOCKET_ERROR) {
-		_stprintf_s(szError, _countof(szError), _T("[ERROR] WSAEventSelect() : %d"), WSAGetLastError());
-		LogDebugMessage(Log_Error, szError);
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_EVENT), WSAGetLastError(), g_FILE, __LINE__);
 		closesocket(socketHandler);
 		exit(EXIT_SOCKET_ERROR);
 	}
@@ -89,10 +89,10 @@ BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct
 	nResult = listen(socketHandler, backlog);	// 最大backlogまで接続要求を受け付ける。それ以外はWSAECONNREFUSEDエラー。
 	if (nResult == SOCKET_ERROR) {
 		if (nResult == WSAECONNREFUSED) {
-			LogDebugMessage(Log_Error, _T("[ERROR] listen() : WSAECONNREFUSED"));
+			// [ERROR] listen() : WSAECONNREFUSED
+			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_LISTEN), WSAGetLastError(), g_FILE, __LINE__);
 		} else {
-			_stprintf_s(szError, _countof(szError), _T("[ERROR] listen() : %d"), WSAGetLastError());
-			LogDebugMessage(Log_Error, szError);
+			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_LISTEN), WSAGetLastError(), g_FILE, __LINE__);
 		}
 		closesocket(socketHandler);
 		exit(EXIT_SOCKET_ERROR);
@@ -103,12 +103,10 @@ BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct
 SOCKET I4C3DAccessor::InitializeUDPSocket(struct sockaddr_in* pAddress, LPCSTR szAddress, USHORT uPort)
 {
 	SOCKET socketHandler = INVALID_SOCKET;
-	TCHAR szError[I4C3D_BUFFER_SIZE];
 
 	socketHandler = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (socketHandler == INVALID_SOCKET) {
-		_stprintf_s(szError, _countof(szError), _T("[ERROR] socket() : %d"), WSAGetLastError());
-		LogDebugMessage(Log_Error, szError);
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_INVALID), WSAGetLastError(), g_FILE, __LINE__);
 		exit(EXIT_SOCKET_ERROR);
 	}
 	pAddress->sin_family = AF_INET;

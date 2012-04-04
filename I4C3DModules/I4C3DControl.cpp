@@ -1,32 +1,49 @@
 #include "StdAfx.h"
 #include "I4C3DCommon.h"
 #include "I4C3DControl.h"
-#include "Miscellaneous.h"
+#include "Misc.h"
 #include "I4C3DAnalyzeXML.h"
 #include "I4C3DSoftwareHandler.h"
+#include "SharedConstants.h"
 #include <vector>
+#include <map>
 using namespace std;
 
-//static void VKPush(HWND hTargetWnd, PCTSTR szKeyTypes, BOOL bUsePostMessage);
+#if UNICODE || _UNICODE
+static LPCTSTR g_FILE = __FILEW__;
+#else
+static LPCTSTR g_FILE = __FILE__;
+#endif
+
 static const PCTSTR TAG_MODIFIER	= _T("modifier");
 static const PCTSTR TAG_UDP_PORT	= _T("udp_port");
 static const PCTSTR TAG_TUMBLERATE	= _T("tumble_rate");
 static const PCTSTR TAG_TRACKRATE	= _T("track_rate");
 static const PCTSTR TAG_DOLLYRATE	= _T("dolly_rate");
-static const PCTSTR TAG_RTT4TCPMODE	= _T("rtt4tcp_mode");
+static const PCTSTR TAG_RTTECMODE	= _T("rttec_mode");
 
 static const PCTSTR COMMAND_REGISTERMACRO	= _T("registermacro");
 
-static TCHAR *g_szController[] = { _T("RTT"), _T("Maya"), _T("Alias"), _T("Showcase"), _T("RTT4EC"), };
-static enum { RTTPlugin, MayaPlugin, AliasPlugin, ShowcasePlugin, RTT4ECPlugin, } PluginIndex;
-static vector<I4C3DSoftwareHandler*> *g_pSoftwareHandlerContainer = NULL;
+static TCHAR *g_szController[] = { _T("RTT"), _T("Maya"), _T("Alias"), _T("Showcase"), _T("RTTEC"), };
+static enum PluginID { RTTPlugin, MayaPlugin, AliasPlugin, ShowcasePlugin, RTTECPlugin, } PluginIndex;
+static map<PluginID, I4C3DSoftwareHandler*> *g_pSoftwareHandlerContainer = NULL;
 
-static BOOL g_bRTT4ECMode = FALSE;
+static BOOL g_bRTTECMode = FALSE;
 static CRITICAL_SECTION g_lock = {0};
+
+inline I4C3DSoftwareHandler* SearchKeyInSoftwareHandlerMap(PluginID id) {
+	if (g_pSoftwareHandlerContainer != NULL && !g_pSoftwareHandlerContainer->empty()) {
+		map<PluginID, I4C3DSoftwareHandler*>::iterator it = g_pSoftwareHandlerContainer->find(id);
+		if (it != g_pSoftwareHandlerContainer->end()) {
+			return it->second;
+		}
+	}
+	return NULL;
+}
 
 I4C3DControl::I4C3DControl(void) : m_bInitialized(FALSE)
 {
-	g_pSoftwareHandlerContainer = new vector<I4C3DSoftwareHandler*>;
+	g_pSoftwareHandlerContainer = new map<PluginID, I4C3DSoftwareHandler*>;
 	InitializeCriticalSection(&g_lock);
 }
 
@@ -95,18 +112,20 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		return TRUE;
 	}
 
-	TCHAR szError[I4C3D_BUFFER_SIZE] = {0};
-	int count = _countof(g_szController);
-	// RTT4TCPモードがONの時はRTTプラグインのみ動作させる
-	if (_tcsicmp(pContext->pAnalyzer->GetGlobalValue(TAG_RTT4TCPMODE), _T("on")) == 0) {
-		g_bRTT4ECMode = TRUE;
+	int i = 0;
+	int count = _countof(g_szController) - 1;
+	// RTTECモードがONの時はRTTプラグインのみ動作させる
+	if (_tcsicmp(pContext->pAnalyzer->GetGlobalValue(TAG_RTTECMODE), _T("on")) == 0) {
+		g_bRTTECMode = TRUE;
+		i = RTTECPlugin;
+		count++;
 	}
 	
 	// マクロ登録のフォーマット文をTCHAR*で作成
 	TCHAR registerMacroFormat[I4C3D_BUFFER_SIZE] = {0};
 	MultiByteToWideChar(CP_ACP, 0, g_registerMacroFormat, -1, registerMacroFormat, _countof(registerMacroFormat));
 
-	for (int i = 0; i < count; ++i) {
+	for (; i < count; ++i) {
 		PCTSTR szModifierKey = NULL;
 		char cszModifierKey[I4C3D_BUFFER_SIZE] = {0};
 		double fTumbleRate = 1.0;
@@ -119,8 +138,8 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		PCTSTR szPort = pContext->pAnalyzer->GetSoftValue(g_szController[i], TAG_UDP_PORT);
 		if (szPort == NULL) {
 			uPort += (USHORT)i;
-			_stprintf_s(szError, _countof(szError), _T("設定ファイルに%sのUDPポートを指定してください。仮に%uに設定します。<I4C3DControl::Initialize>"), g_szController[i], uPort);
-			LogDebugMessage(Log_Error, szError);
+			// 設定ファイルに%sのUDPポートを指定してください。仮に%uに設定します。		
+			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_CFG_PORT), GetLastError(), g_FILE, __LINE__);
 		} else {
 			uPort = (USHORT)_tstoi(szPort);
 		}
@@ -128,20 +147,20 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		// ハンドラの初期化
 		I4C3DSoftwareHandler* pHandler = new I4C3DSoftwareHandler(g_szController[i], uPort);
 		if (!pHandler->PrepareSocket()) {
-			_stprintf_s(szError, _countof(szError), _T("%sの管理クラス[ソケット]の作成に失敗しています。%sへの操作は行われません。"), g_szController[i], g_szController[i]);
-			LogDebugMessage(Log_Error, szError);
+			// %sの管理クラス[ソケット]の作成に失敗しています。%sへの操作は行われません。"), g_szController[i], g_szController[i]);
+			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SYSTEM_INIT), GetLastError(), g_FILE, __LINE__);
 			delete pHandler;
 			continue;
 		}
 
-		// ハンドラをvectorで管理
-		g_pSoftwareHandlerContainer->push_back(pHandler);
+		// ハンドラをmapで管理
+		g_pSoftwareHandlerContainer->insert(map<PluginID, I4C3DSoftwareHandler*>::value_type((PluginID)i, pHandler));
 
 		// 修飾キー
 		szModifierKey = pContext->pAnalyzer->GetSoftValue(g_szController[i], TAG_MODIFIER);
 		if (szModifierKey == NULL) {
-			if (!g_bRTT4ECMode && i != RTT4ECPlugin) {
-				LogDebugMessage(Log_Error, _T("設定ファイルに修飾キーを設定してください。<I4C3DControl::Initialize>"));
+			if (!g_bRTTECMode && i != RTTECPlugin) {
+				LoggingMessage(Log_Error, _T(MESSAGE_ERROR_CFG_MODIFY), GetLastError(), g_FILE, __LINE__);
 			}
 			strcpy_s(cszModifierKey, sizeof(cszModifierKey), "NULL");	// "NULL"の場合は、それぞれのプラグインでデフォルト値に設定する。
 		} else {
@@ -170,7 +189,7 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		}
 
 		// 各Plugin.exeへの電文作成・送信
-		if ((g_bRTT4ECMode && i == RTT4ECPlugin) || (!g_bRTT4ECMode && i != RTT4ECPlugin)) {
+		if ((g_bRTTECMode && i == RTTECPlugin) || (!g_bRTTECMode && i != RTTECPlugin)) {
 			sprintf_s(packet.szCommand, g_initCommandFormat, "init", cszModifierKey, fTumbleRate, fTrackRate, fDollyRate, cTermination);
 
 			EnterCriticalSection(&g_lock);
@@ -180,7 +199,7 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 
 		// 各Plugin.exeへキーマクロ設定の電文を送信 TODO
 		// 各ソフトウェアタグの<key name="MACROx">value</key>を読み取る
-		if (g_bRTT4ECMode || i == RTT4ECPlugin) {	// RTT4ECPluginのときはF710TCPControlが管理する
+		if (g_bRTTECMode || i == RTTECPlugin) {	// RTTECPluginのときはF710TCPControlが管理する
 			continue;
 		}
 		TCHAR szMacroName[16] = {0};
@@ -218,22 +237,22 @@ void I4C3DControl::UnInitialize(void)
 	if (!m_bInitialized) {
 		return;
 	}
-
+	
 	if (g_pSoftwareHandlerContainer != NULL) {
-		int size = g_pSoftwareHandlerContainer->size();
-		for (int i = 0; i < size; ++i) {
+		map<PluginID, I4C3DSoftwareHandler*>::iterator it = g_pSoftwareHandlerContainer->begin();
+		for (; it != g_pSoftwareHandlerContainer->end(); it++) {
 			I4C3DUDPPacket packet = {0};
 			strcpy_s(packet.szCommand, _countof(packet.szCommand), "exit");
 			EnterCriticalSection(&g_lock);
-			sendto((*g_pSoftwareHandlerContainer)[i]->m_socketHandler, (const char*)&packet, 8, 0, (const SOCKADDR*)&(*g_pSoftwareHandlerContainer)[i]->m_address, sizeof((*g_pSoftwareHandlerContainer)[i]->m_address));
+			sendto(it->second->m_socketHandler, (const char*)&packet, 8, 0, (const SOCKADDR*)&it->second->m_address, sizeof(it->second->m_address));
 			LeaveCriticalSection(&g_lock);
 
-			closesocket((*g_pSoftwareHandlerContainer)[i]->m_socketHandler);
-			delete (*g_pSoftwareHandlerContainer)[i];
-			(*g_pSoftwareHandlerContainer)[i] = NULL;
+			closesocket(it->second->m_socketHandler);
+			delete it->second;
+			it->second = NULL;
 		}
-		g_pSoftwareHandlerContainer->clear();
 	}
+
 	m_bInitialized = FALSE;
 }
 
@@ -251,9 +270,13 @@ void I4C3DControl::UnInitialize(void)
  */
 void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 {
-	if (g_bRTT4ECMode) {
+	if (g_bRTTECMode) {
+		I4C3DSoftwareHandler* handler = SearchKeyInSoftwareHandlerMap(RTTECPlugin);
+		if (!handler) {
+			return;
+		}
 		EnterCriticalSection(&g_lock);
-		sendto((*g_pSoftwareHandlerContainer)[RTT4ECPlugin]->m_socketHandler, (const char*)pPacket, commandLen+4, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[RTT4ECPlugin]->m_address), sizeof((*g_pSoftwareHandlerContainer)[RTT4ECPlugin]->m_address));
+		sendto(handler->m_socketHandler, (const char*)pPacket, commandLen+4, 0, (const SOCKADDR*)&(handler->m_address), sizeof(handler->m_address));
 		LeaveCriticalSection(&g_lock);
 		return;
 	}
@@ -265,21 +288,23 @@ void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 	}
 	GetWindowText(hForeground, szWindowTitle, _countof(szWindowTitle));
 
-	int size = g_pSoftwareHandlerContainer->size();
-	for (int i = 0; i < size; ++i) {
-		if (_tcsstr(szWindowTitle, (*g_pSoftwareHandlerContainer)[i]->m_szTargetTitle) != NULL) {
-			// ウィンドウハンドルを付加
-			if (hForeground == NULL) {
+	if (g_pSoftwareHandlerContainer != NULL) {
+		map<PluginID, I4C3DSoftwareHandler*>::iterator it = g_pSoftwareHandlerContainer->begin();
+		for (; it != g_pSoftwareHandlerContainer->end(); it++) {
+			if (_tcsstr(szWindowTitle, it->second->m_szTargetTitle) != NULL) {
+				// ウィンドウハンドルを付加
+				if (hForeground == NULL) {
+					return;
+				}
+				for (int j = 0; j < 4; ++j) {
+					pPacket->hwnd[j] = ((unsigned char*)&hForeground)[j];
+				}
+
+				EnterCriticalSection(&g_lock);
+				sendto(it->second->m_socketHandler, (const char*)pPacket, commandLen+4, 0, (const SOCKADDR*)&(it->second->m_address), sizeof(it->second->m_address));
+				LeaveCriticalSection(&g_lock);
 				return;
 			}
-			for (int j = 0; j < 4; ++j) {
-				pPacket->hwnd[j] = ((unsigned char*)&hForeground)[j];
-			}
-
-			EnterCriticalSection(&g_lock);
-			sendto((*g_pSoftwareHandlerContainer)[i]->m_socketHandler, (const char*)pPacket, commandLen+4, 0, (const SOCKADDR*)&((*g_pSoftwareHandlerContainer)[i]->m_address), sizeof((*g_pSoftwareHandlerContainer)[i]->m_address));
-			LeaveCriticalSection(&g_lock);
-			return;
 		}
 	}
 }

@@ -6,8 +6,14 @@
 #include "I4C3DCore.h"
 #include "I4C3DAnalyzeXML.h"
 #include "I4C3DControl.h"
-#include "Miscellaneous.h"
-#include "ErrorCodeList.h"
+#include "Misc.h"
+#include "SharedConstants.h"
+
+#if UNICODE || _UNICODE
+static LPCTSTR g_FILE = __FILEW__;
+#else
+static LPCTSTR g_FILE = __FILE__;
+#endif
 
 static I4C3DContext g_Context = {0};
 static I4C3DCore g_Core;
@@ -54,12 +60,12 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri)
 	ZeroMemory(&g_Context, sizeof(g_Context));
 	g_Context.pAnalyzer = new I4C3DAnalyzeXML();
 	if (g_Context.pAnalyzer == NULL) {
-		ReportError(_T("[ERROR] メモリの確保に失敗しています。初期化は行われません。"));
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_MEMORY_INVALID), GetLastError(), g_FILE, __LINE__);
 		I4C3DStop();
 		exit(EXIT_SYSTEM_ERROR);
 	}
 	if (!g_Context.pAnalyzer->LoadXML(szXMLUri)) {
-		ReportError(_T("[ERROR] XMLのロードに失敗しています。初期化は行われません。"));
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_XML_LOAD), GetLastError(), g_FILE, __LINE__);
 		I4C3DStop();
 		exit(EXIT_INVALID_FILE_CONFIGURATION);
 	}
@@ -77,18 +83,18 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri)
 		}
 		// 指定なし、上記以外ならLog_Error
 	}
-	LogFileOpenW("mainmodule", logLevel);
+	LogFileOpenW(SHARED_LOG_FILE_NAME, logLevel);
 	if (logLevel <= Log_Info) {
-		LogFileOpenA("mainmoduleinfo", logLevel);	// プロファイル情報書き出しのため
+		LogFileOpenA(SHARED_LOGINFO_FILE_NAME, logLevel);	// プロファイル情報書き出しのため
 	}
-
+	
 	// 設定ファイルから終端文字を取得
 	char cTermination = '?';
 	PCTSTR szTermination = g_Context.pAnalyzer->GetGlobalValue(TAG_TERMINATION);
 	if (szTermination != NULL) {
 		char cszTermination[5];
 		if (_tcslen(szTermination) != 1) {
-			LogDebugMessage(Log_Error, _T("設定ファイルの終端文字の指定に誤りがあります。1文字で指定してください。'?'に仮指定されます"));
+			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_CFG_TERMCHAR), GetLastError(), g_FILE, __LINE__);
 			szTermination = _T("?");
 		}
 #if UNICODE || _UNICODE
@@ -174,7 +180,7 @@ BOOL PrepareTargetController(char cTermination)
 
 	// 初期化
 	if (g_Context.pController == NULL || !g_Context.pController->Initialize(&g_Context, cTermination)) {
-		LogDebugMessage(Log_Error, _T("コントローラの初期化に失敗しています。<I4C3DModules::SelectTargetController>"));
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SYSTEM_INIT), GetLastError(), g_FILE, __LINE__);
 		return FALSE;
 	}
 

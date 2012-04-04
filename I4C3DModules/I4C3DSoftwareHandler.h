@@ -1,7 +1,5 @@
 #pragma once
 
-class map;
-
 class I4C3DSoftwareHandler
 {
 public:
