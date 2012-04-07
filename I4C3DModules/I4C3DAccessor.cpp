@@ -1,4 +1,5 @@
 #include "StdAfx.h"
+#include "I4C3DModules.h"
 #include "I4C3DAccessor.h"
 #include "I4C3DModulesDefs.h"
 #include "Misc.h"
@@ -50,7 +51,7 @@ SOCKET I4C3DAccessor::InitializeTCPSocket(struct sockaddr_in* pAddress, LPCSTR s
 	socketHandler = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (socketHandler == INVALID_SOCKET) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_INVALID), WSAGetLastError(), g_FILE, __LINE__);
-		exit(EXIT_SOCKET_ERROR);
+		I4C3DExit(EXIT_SOCKET_ERROR);
 	}
 
 	pAddress->sin_family = AF_INET;
@@ -74,7 +75,7 @@ BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct
 	if (nResult == SOCKET_ERROR) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_BIND), WSAGetLastError(), g_FILE, __LINE__);
 		closesocket(socketHandler);
-		exit(EXIT_SOCKET_ERROR);
+		I4C3DExit(EXIT_SOCKET_ERROR);
 	}
 
 	// select
@@ -82,7 +83,7 @@ BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct
 	if (nResult == SOCKET_ERROR) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_EVENT), WSAGetLastError(), g_FILE, __LINE__);
 		closesocket(socketHandler);
-		exit(EXIT_SOCKET_ERROR);
+		I4C3DExit(EXIT_SOCKET_ERROR);
 	}
 
 	// listen
@@ -95,7 +96,7 @@ BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct
 			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_LISTEN), WSAGetLastError(), g_FILE, __LINE__);
 		}
 		closesocket(socketHandler);
-		exit(EXIT_SOCKET_ERROR);
+		I4C3DExit(EXIT_SOCKET_ERROR);
 	}
 	return TRUE;
 }
@@ -107,7 +108,7 @@ SOCKET I4C3DAccessor::InitializeUDPSocket(struct sockaddr_in* pAddress, LPCSTR s
 	socketHandler = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (socketHandler == INVALID_SOCKET) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_INVALID), WSAGetLastError(), g_FILE, __LINE__);
-		exit(EXIT_SOCKET_ERROR);
+		I4C3DExit(EXIT_SOCKET_ERROR);
 	}
 	pAddress->sin_family = AF_INET;
 	pAddress->sin_port = htons(uPort);

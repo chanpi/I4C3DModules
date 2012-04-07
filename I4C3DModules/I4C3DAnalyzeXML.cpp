@@ -1,4 +1,5 @@
 #include "StdAfx.h"
+#include "I4C3DModules.h"
 #include "I4C3DModulesDefs.h"
 #include "I4C3DAnalyzeXML.h"
 #include "Misc.h"
@@ -99,7 +100,7 @@ BOOL I4C3DAnalyzeXML::LoadXML(PCTSTR szXMLUri)
 	CleanupRootElement();
 	if (!PathFileExists(szXMLUri)) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_XML_LOAD), GetLastError(), g_FILE, __LINE__);
-		exit(EXIT_FILE_NOT_FOUND);
+		I4C3DExit(EXIT_FILE_NOT_FOUND);
 		//return FALSE;
 	}
 	g_bInitialized = Initialize(&g_pRootElement, szXMLUri);

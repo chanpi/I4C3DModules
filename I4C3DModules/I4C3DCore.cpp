@@ -1,4 +1,5 @@
 #include "StdAfx.h"
+#include "I4C3DModules.h"
 #include "I4C3DCore.h"
 #include "I4C3DAccessor.h"
 #include "I4C3DControl.h"
@@ -176,11 +177,11 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 	PCTSTR szPort = pContext->pAnalyzer->GetGlobalValue(TAG_PORT);
 	if (szPort == NULL) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_CFG_PORT), GetLastError(), g_FILE, __LINE__);
-		exit(EXIT_INVALID_FILE_CONFIGURATION);
+		I4C3DExit(EXIT_INVALID_FILE_CONFIGURATION);
 	}
 	if (_stscanf_s(szPort, _T("%hu"), &uBridgePort, sizeof(uBridgePort)) != 1) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_CFG_PORT), GetLastError(), g_FILE, __LINE__);
-		exit(EXIT_INVALID_FILE_CONFIGURATION);
+		I4C3DExit(EXIT_INVALID_FILE_CONFIGURATION);
 	}
 
 	// 設定ファイルより接続クライアント数を取得
@@ -197,7 +198,7 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 	pContext->receiver = accessor.InitializeTCPSocket(&pContext->address, NULL, FALSE, uBridgePort);
 	if (pContext->receiver == INVALID_SOCKET) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_INVALID), GetLastError(), g_FILE, __LINE__);
-		exit(EXIT_SOCKET_ERROR);
+		I4C3DExit(EXIT_SOCKET_ERROR);
 	}
 
 	// 待ちうけ終了イベント作成
@@ -205,7 +206,7 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 	if (pContext->hStopEvent == NULL) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_HANDLE_INVALID), GetLastError(), g_FILE, __LINE__);
 		closesocket(pContext->receiver);
-		exit(EXIT_SYSTEM_ERROR);
+		I4C3DExit(EXIT_SYSTEM_ERROR);
 	}
 
 	pContext->hThread = (HANDLE)_beginthreadex(NULL, 0, &I4C3DReceiveThreadProc, (void*)pContext, CREATE_SUSPENDED, NULL/*&pContext->uThreadID*/);
@@ -213,7 +214,7 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_HANDLE_INVALID), GetLastError(), g_FILE, __LINE__);
 		SafeCloseHandle(pContext->hStopEvent);
 		closesocket(pContext->receiver);
-		exit(EXIT_SYSTEM_ERROR);
+		I4C3DExit(EXIT_SYSTEM_ERROR);
 	}
 
 	ResumeThread(pContext->hThread);
@@ -444,13 +445,13 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 	hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 	if (hEvent == NULL) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_HANDLE_INVALID), GetLastError(), g_FILE, __LINE__);
-		exit(EXIT_SYSTEM_ERROR);
+		I4C3DExit(EXIT_SYSTEM_ERROR);
 	}
 
 	I4C3DAccessor accessor;
 	if (!accessor.SetListeningSocket(pContext->receiver, &pContext->address, g_backlog, hEvent, FD_ACCEPT | FD_CLOSE)) {
 		SafeCloseHandle(hEvent);
-		exit(EXIT_SOCKET_ERROR);
+		I4C3DExit(EXIT_SOCKET_ERROR);
 	}
 
 	hEventArray[0] = hEvent;

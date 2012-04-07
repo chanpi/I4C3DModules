@@ -15,9 +15,14 @@ static LPCTSTR g_FILE = __FILEW__;
 static LPCTSTR g_FILE = __FILE__;
 #endif
 
+typedef BOOL (__stdcall *FUNCTYPE)(UINT, DWORD);
+#define MSGFLT_ADD		1
+#define MSGFLT_REMOVE	2
+
 static I4C3DContext g_Context = {0};
 static I4C3DCore g_Core;
 static BOOL g_bStarted = FALSE;
+static HWND g_hDriverWnd = NULL;
 
 static BOOL PrepareTargetController(char cTermination);
 static void DestroyTargetController();
@@ -49,11 +54,13 @@ static const PCTSTR TAG_TERMINATION	= _T("termination");
  * @see
  * I4C3DStop()
  */
-BOOL WINAPI I4C3DStart(PCTSTR szXMLUri)
+BOOL WINAPI I4C3DStart(PCTSTR szXMLUri, HWND hWnd)
 {
 	if (g_bStarted) {
 		return TRUE;
 	}
+
+	g_hDriverWnd = hWnd;
 
 	// 必要な初期化
 	ZeroMemory(&g_Core, sizeof(g_Core));
@@ -62,12 +69,12 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri)
 	if (g_Context.pAnalyzer == NULL) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_MEMORY_INVALID), GetLastError(), g_FILE, __LINE__);
 		I4C3DStop();
-		exit(EXIT_SYSTEM_ERROR);
+		I4C3DExit(EXIT_SYSTEM_ERROR);
 	}
 	if (!g_Context.pAnalyzer->LoadXML(szXMLUri)) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_XML_LOAD), GetLastError(), g_FILE, __LINE__);
 		I4C3DStop();
-		exit(EXIT_INVALID_FILE_CONFIGURATION);
+		I4C3DExit(EXIT_INVALID_FILE_CONFIGURATION);
 	}
 
 	// 設定ファイルからログレベルを取得
@@ -108,7 +115,7 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri)
 
 	if (!PrepareTargetController(cTermination)) {
 		I4C3DStop();
-		exit(EXIT_SYSTEM_ERROR);
+		I4C3DExit(EXIT_SYSTEM_ERROR);
 	}
 
 	g_bStarted = g_Core.Start(&g_Context);
@@ -192,4 +199,19 @@ void DestroyTargetController()
 	if (g_Context.pController != NULL) {
 		g_Context.pController->UnInitialize();
 	}
+}
+
+void I4C3DExit(int errorCode)
+{
+	FUNCTYPE ChangeWindowMessageFilter;
+	HMODULE dll = LoadLibrary(_T("user32.dll"));
+	ChangeWindowMessageFilter = (FUNCTYPE)GetProcAddress(LoadLibrary(_T("user32.dll")), "ChangeWindowMessageFilter");
+
+	if (ChangeWindowMessageFilter != NULL) {
+		ChangeWindowMessageFilter(MY_I4C3DEXIT, MSGFLT_ADD);
+	}
+
+	LoggingMessage(Log_Error, _T(MESSAGE_ERROR_UNKNOWN), GetLastError(), g_FILE, __LINE__);
+	//PostQuitMessage(errorCode);
+	PostMessage(g_hDriverWnd, MY_I4C3DEXIT, 0, errorCode);
 }
