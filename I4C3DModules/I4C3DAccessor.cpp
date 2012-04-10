@@ -46,12 +46,13 @@ I4C3DAccessor::~I4C3DAccessor(void)
  */
 SOCKET I4C3DAccessor::InitializeTCPSocket(struct sockaddr_in* pAddress, LPCSTR szAddress, BOOL bSend, USHORT uPort)
 {
-	SOCKET socketHandler;
+	SOCKET socketHandler = INVALID_SOCKET;
 
 	socketHandler = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (socketHandler == INVALID_SOCKET) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_INVALID), WSAGetLastError(), g_FILE, __LINE__);
 		I4C3DExit(EXIT_SOCKET_ERROR);
+		return socketHandler;
 	}
 
 	pAddress->sin_family = AF_INET;
@@ -76,6 +77,7 @@ BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_BIND), WSAGetLastError(), g_FILE, __LINE__);
 		closesocket(socketHandler);
 		I4C3DExit(EXIT_SOCKET_ERROR);
+		return FALSE;
 	}
 
 	// select
@@ -84,6 +86,7 @@ BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_EVENT), WSAGetLastError(), g_FILE, __LINE__);
 		closesocket(socketHandler);
 		I4C3DExit(EXIT_SOCKET_ERROR);
+		return FALSE;
 	}
 
 	// listen
@@ -97,6 +100,7 @@ BOOL I4C3DAccessor::SetListeningSocket(const SOCKET& socketHandler, const struct
 		}
 		closesocket(socketHandler);
 		I4C3DExit(EXIT_SOCKET_ERROR);
+		return FALSE;
 	}
 	return TRUE;
 }
@@ -109,6 +113,7 @@ SOCKET I4C3DAccessor::InitializeUDPSocket(struct sockaddr_in* pAddress, LPCSTR s
 	if (socketHandler == INVALID_SOCKET) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_INVALID), WSAGetLastError(), g_FILE, __LINE__);
 		I4C3DExit(EXIT_SOCKET_ERROR);
+		return socketHandler;
 	}
 	pAddress->sin_family = AF_INET;
 	pAddress->sin_port = htons(uPort);

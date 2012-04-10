@@ -20,7 +20,7 @@ static LPCTSTR g_FILE = __FILE__;
 
 
 // 子スレッド情報を格納する
-static HANDLE g_ChildThreadInfo[8+2];	// 念のため+2。基本的には8クライアントまで。
+static HANDLE g_ChildThreadInfo[8+2]	= {0};	// 念のため+2。基本的には8クライアントまで。
 static volatile int g_ChildThreadIndex	= 0;
 static int g_ChildThreadInfoLimit		= 0;
 static int g_sleepCount					= 0;
@@ -36,7 +36,7 @@ static void RemoveAllChildThread();
 static void GetTerminationFromFile(I4C3DContext* pContext, char* cTermination);
 static BOOL CheckNetworkEventError(const WSANETWORKEVENTS& events);
 
-static CRITICAL_SECTION g_Lock;	// 子スレッドの管理に使用。インクリメント・デクリメントを行う過程にもロックをかける必要があるため。
+static CRITICAL_SECTION g_Lock			= {0};	// 子スレッドの管理に使用。インクリメント・デクリメントを行う過程にもロックをかける必要があるため。
 
 static const PCTSTR TAG_SLEEPCOUNT		= _T("sleepcount");
 static const PCTSTR TAG_BACKLOG			= _T("backlog");
@@ -168,8 +168,7 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 
 	// 設定ファイルよりSleepカウントを取得
 	PCTSTR szSleepCount = pContext->pAnalyzer->GetGlobalValue(TAG_SLEEPCOUNT);
-	if (szSleepCount == NULL ||
-		_stscanf_s(szSleepCount, _T("%d"), &g_sleepCount, sizeof(g_sleepCount)) != 1) {
+	if (szSleepCount == NULL || _stscanf_s(szSleepCount, _T("%d"), &g_sleepCount) != 1) {
 		g_sleepCount = 1;
 	}
 
@@ -178,16 +177,17 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 	if (szPort == NULL) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_CFG_PORT), GetLastError(), g_FILE, __LINE__);
 		I4C3DExit(EXIT_INVALID_FILE_CONFIGURATION);
+		return FALSE;
 	}
-	if (_stscanf_s(szPort, _T("%hu"), &uBridgePort, sizeof(uBridgePort)) != 1) {
+	if (_stscanf_s(szPort, _T("%hu"), &uBridgePort) != 1) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_CFG_PORT), GetLastError(), g_FILE, __LINE__);
 		I4C3DExit(EXIT_INVALID_FILE_CONFIGURATION);
+		return FALSE;
 	}
 
 	// 設定ファイルより接続クライアント数を取得
 	PCTSTR szBacklog = pContext->pAnalyzer->GetGlobalValue(TAG_BACKLOG);
-	if (szBacklog == NULL ||
-		_stscanf_s(szBacklog, _T("%d"), &g_backlog, sizeof(g_backlog)) != 1) {
+	if (szBacklog == NULL || _stscanf_s(szBacklog, _T("%d"), &g_backlog) != 1) {
 		g_backlog = 8;
 	}
 	g_ChildThreadInfoLimit = min(_countof(g_ChildThreadInfo), g_backlog);
@@ -199,6 +199,7 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 	if (pContext->receiver == INVALID_SOCKET) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SOCKET_INVALID), GetLastError(), g_FILE, __LINE__);
 		I4C3DExit(EXIT_SOCKET_ERROR);
+		return FALSE;
 	}
 
 	// 待ちうけ終了イベント作成
@@ -207,6 +208,7 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_HANDLE_INVALID), GetLastError(), g_FILE, __LINE__);
 		closesocket(pContext->receiver);
 		I4C3DExit(EXIT_SYSTEM_ERROR);
+		return FALSE;
 	}
 
 	pContext->hThread = (HANDLE)_beginthreadex(NULL, 0, &I4C3DReceiveThreadProc, (void*)pContext, CREATE_SUSPENDED, NULL/*&pContext->uThreadID*/);
@@ -215,6 +217,7 @@ BOOL I4C3DCore::InitializeMainContext(I4C3DContext* pContext)
 		SafeCloseHandle(pContext->hStopEvent);
 		closesocket(pContext->receiver);
 		I4C3DExit(EXIT_SYSTEM_ERROR);
+		return FALSE;
 	}
 
 	ResumeThread(pContext->hThread);
@@ -325,7 +328,7 @@ void I4C3DCore::Stop(I4C3DContext* pContext) {
 void I4C3DCore::UnInitialize(I4C3DContext* pContext)
 {
 	// プロセッサ関連終了
-	HANDLE hThread[2];
+	HANDLE hThread[2] = {0};
 	//hThread[0] = pContext->processorContext.hProcessorMonitorThread;
 	//hThread[1] = pContext->processorContext.hProcessorContextThread;
 
@@ -400,7 +403,7 @@ void RemoveAllChildThread()
 void GetTerminationFromFile(I4C3DContext* pContext, char* cTermination) {
 	PCTSTR szTermination = pContext->pAnalyzer->GetGlobalValue(TAG_TERMINATION);
 	if (szTermination != NULL) {
-		char cszTermination[5];
+		char cszTermination[5] = {0};
 		if (_tcslen(szTermination) != 1) {
 			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_CFG_TERMCHAR), GetLastError(), g_FILE, __LINE__);
 			szTermination = _T("?");
@@ -430,7 +433,7 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 	I4C3DContext* pContext = (I4C3DContext*)pParam;
 
 	SOCKET newClient = NULL;
-	SOCKADDR_IN address;
+	SOCKADDR_IN address = {0};
 	int nLen = 0;
 	HANDLE hChildThread = NULL;
 	UINT uThreadID = 0;
@@ -446,12 +449,14 @@ unsigned __stdcall I4C3DReceiveThreadProc(void* pParam)
 	if (hEvent == NULL) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_HANDLE_INVALID), GetLastError(), g_FILE, __LINE__);
 		I4C3DExit(EXIT_SYSTEM_ERROR);
+		return EXIT_SYSTEM_ERROR;
 	}
 
 	I4C3DAccessor accessor;
 	if (!accessor.SetListeningSocket(pContext->receiver, &pContext->address, g_backlog, hEvent, FD_ACCEPT | FD_CLOSE)) {
 		SafeCloseHandle(hEvent);
 		I4C3DExit(EXIT_SOCKET_ERROR);
+		return EXIT_SOCKET_ERROR;
 	}
 
 	hEventArray[0] = hEvent;
@@ -539,7 +544,7 @@ unsigned __stdcall I4C3DAcceptedThreadProc(void* pParam)
 
 	DWORD dwResult = 0;
 	WSAEVENT hEvent = NULL;
-	WSAEVENT hEventArray[2];
+	WSAEVENT hEventArray[2] = {0};
 	WSANETWORKEVENTS events = {0};
 
 	hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);

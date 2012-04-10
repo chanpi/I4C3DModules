@@ -145,7 +145,11 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 		}
 
 		// ハンドラの初期化
-		I4C3DSoftwareHandler* pHandler = new I4C3DSoftwareHandler(g_szController[i], uPort);
+		I4C3DSoftwareHandler* pHandler = new I4C3DSoftwareHandler(g_szController[i], uPort);	// デストラクタでdelete
+		if (!pHandler) {
+			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_MEMORY_INVALID), GetLastError(), g_FILE, __LINE__);
+			return FALSE;
+		}
 		if (!pHandler->PrepareSocket()) {
 			// %sの管理クラス[ソケット]の作成に失敗しています。%sへの操作は行われません。"), g_szController[i], g_szController[i]);
 			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_SYSTEM_INIT), GetLastError(), g_FILE, __LINE__);
@@ -162,35 +166,32 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 			if (!g_bRTTECMode && i != RTTECPlugin) {
 				LoggingMessage(Log_Error, _T(MESSAGE_ERROR_CFG_MODIFY), GetLastError(), g_FILE, __LINE__);
 			}
-			strcpy_s(cszModifierKey, sizeof(cszModifierKey), "NULL");	// "NULL"の場合は、それぞれのプラグインでデフォルト値に設定する。
+			strcpy_s(cszModifierKey, _countof(cszModifierKey), "NULL");	// "NULL"の場合は、それぞれのプラグインでデフォルト値に設定する。
 		} else {
 #if UNICODE || _UNICODE
 			WideCharToMultiByte(CP_ACP, 0, szModifierKey, _tcslen(szModifierKey), cszModifierKey, sizeof(cszModifierKey), NULL, NULL);
 #else
-			strcpy_s(cszModifierKey, sizeof(cszModifierKey), szModifierKey);
+			strcpy_s(cszModifierKey, _countof(cszModifierKey), szModifierKey);
 #endif
 		}
 
 		// 各コマンドの移動量パラメータの比率を取得
 		PCTSTR szRate = pContext->pAnalyzer->GetSoftValue(g_szController[i], TAG_TUMBLERATE);
-		if (szRate == NULL ||
-			_stscanf_s(szRate, _T("%lf"), &fTumbleRate, sizeof(fTumbleRate)) != 1) {
+		if (szRate == NULL || _stscanf_s(szRate, _T("%lf"), &fTumbleRate) != 1) {
 				fTumbleRate = 1.0;
 		}
 		szRate = pContext->pAnalyzer->GetSoftValue(g_szController[i], TAG_TRACKRATE);
-		if (szRate == NULL ||
-			_stscanf_s(szRate, _T("%lf"), &fTrackRate, sizeof(fTrackRate)) != 1) {
+		if (szRate == NULL || _stscanf_s(szRate, _T("%lf"), &fTrackRate) != 1) {
 				fTrackRate = 1.0;
 		}
 		szRate = pContext->pAnalyzer->GetSoftValue(g_szController[i], TAG_DOLLYRATE);
-		if (szRate == NULL ||
-			_stscanf_s(szRate, _T("%lf"), &fDollyRate, sizeof(fDollyRate)) != 1) {
+		if (szRate == NULL || _stscanf_s(szRate, _T("%lf"), &fDollyRate) != 1) {
 				fDollyRate = 1.0;
 		}
 
 		// 各Plugin.exeへの電文作成・送信
 		if ((g_bRTTECMode && i == RTTECPlugin) || (!g_bRTTECMode && i != RTTECPlugin)) {
-			sprintf_s(packet.szCommand, g_initCommandFormat, "init", cszModifierKey, fTumbleRate, fTrackRate, fDollyRate, cTermination);
+			sprintf_s(packet.szCommand, _countof(packet.szCommand), g_initCommandFormat, "init", cszModifierKey, fTumbleRate, fTrackRate, fDollyRate, cTermination);
 
 			EnterCriticalSection(&g_lock);
 			sendto(pHandler->m_socketHandler, (const char*)&packet, strlen(packet.szCommand)+4, 0, (const SOCKADDR*)&pHandler->m_address, sizeof(pHandler->m_address));
@@ -214,7 +215,7 @@ BOOL I4C3DControl::Initialize(I4C3DContext* pContext, char cTermination)
 			}
 
 			ZeroMemory(&packet, sizeof(packet));
-			_stprintf_s(szTmpCommand, registerMacroFormat, _T("registermacro"), szMacroName, szMacroValue, cTermination);
+			_stprintf_s(szTmpCommand, _countof(szTmpCommand), registerMacroFormat, _T("registermacro"), szMacroName, szMacroValue, cTermination);
 			WideCharToMultiByte(CP_ACP, 0, szTmpCommand, _tcslen(szTmpCommand), packet.szCommand, sizeof(packet.szCommand), NULL, NULL);
 			
 			EnterCriticalSection(&g_lock);
@@ -240,7 +241,7 @@ void I4C3DControl::UnInitialize(void)
 	
 	if (g_pSoftwareHandlerContainer != NULL) {
 		map<PluginID, I4C3DSoftwareHandler*>::iterator it = g_pSoftwareHandlerContainer->begin();
-		for (; it != g_pSoftwareHandlerContainer->end(); it++) {
+		for (; it != g_pSoftwareHandlerContainer->end(); ++it) {
 			I4C3DUDPPacket packet = {0};
 			strcpy_s(packet.szCommand, _countof(packet.szCommand), "exit");
 			EnterCriticalSection(&g_lock);
@@ -290,7 +291,7 @@ void I4C3DControl::Execute(I4C3DUDPPacket* pPacket, int commandLen)
 
 	if (g_pSoftwareHandlerContainer != NULL) {
 		map<PluginID, I4C3DSoftwareHandler*>::iterator it = g_pSoftwareHandlerContainer->begin();
-		for (; it != g_pSoftwareHandlerContainer->end(); it++) {
+		for (; it != g_pSoftwareHandlerContainer->end(); ++it) {
 			if (_tcsstr(szWindowTitle, it->second->m_szTargetTitle) != NULL) {
 				// ウィンドウハンドルを付加
 				if (hForeground == NULL) {

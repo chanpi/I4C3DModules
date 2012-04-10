@@ -37,8 +37,8 @@ unsigned int __stdcall I4C3DProcessorContextThreadProc(void *pParam)
 
 #if DEBUG || _DEBUG
 		if (pContext->processorContext.uNapTime > 0) {
-			TCHAR szBuf[32];
-			_stprintf_s(szBuf, 32, _T("%d msec sleep\n"), pContext->processorContext.uNapTime);
+			TCHAR szBuf[32] = {0};
+			_stprintf_s(szBuf, _countof(szBuf), _T("%u msec sleep\n"), pContext->processorContext.uNapTime);
 			OutputDebugString(szBuf);
 		}
 #endif
@@ -70,19 +70,19 @@ unsigned int __stdcall I4C3DProcessorContextThreadProc(void *pParam)
  */
 unsigned int __stdcall I4C3DProcessorMonitorThreadProc(void *pParam)
 {
-	PDH_HQUERY hQuerys[MAX_CPUCORE_COUNT];
-	PDH_HCOUNTER hCounters[MAX_CPUCORE_COUNT];
-	PDH_FMT_COUNTERVALUE fmtValues[MAX_CPUCORE_COUNT];
-	TCHAR szQuerys[MAX_CPUCORE_COUNT][MAX_QUERY_LENGTH];
+	PDH_HQUERY hQuerys[MAX_CPUCORE_COUNT]				= {0};
+	PDH_HCOUNTER hCounters[MAX_CPUCORE_COUNT]			= {0};
+	PDH_FMT_COUNTERVALUE fmtValues[MAX_CPUCORE_COUNT]	= {0};
+	TCHAR szQuerys[MAX_CPUCORE_COUNT][MAX_QUERY_LENGTH]	= {0};
 	DWORD i = 0;
-	bool isQueryOpend[MAX_CPUCORE_COUNT];
+	bool isQueryOpend[MAX_CPUCORE_COUNT]				= {0};
 	DWORD dwSamplingRate = 0;
 
 	I4C3DContext* pContext = (I4C3DContext*)pParam;
 
 	PCTSTR szSamplingRate = pContext->pAnalyzer->GetGlobalValue(TAG_SAMPLING_RATE);
 	if (szSamplingRate == NULL || 
-		_stscanf_s(szSamplingRate, _T("%d"), &dwSamplingRate, sizeof(dwSamplingRate)) != 1) {
+		_stscanf_s(szSamplingRate, _T("%lu"), &dwSamplingRate) != 1) {
 			dwSamplingRate = 1000;
 	}
 
@@ -92,7 +92,7 @@ unsigned int __stdcall I4C3DProcessorMonitorThreadProc(void *pParam)
 	GetSystemInfo(&sysInfo);
 
 	for (i = 0; i < sysInfo.dwNumberOfProcessors; i++) {
-		_stprintf_s(szQuerys[i], _countof(szQuerys[i]), _T("\\Processor(%d)\\%% Processor Time"), i);
+		_stprintf_s(szQuerys[i], _countof(szQuerys[i]), _T("\\Processor(%lu)\\%% Processor Time"), i);
 	}
 
 	while (pContext->bIsAlive && WaitForSingleObject(pContext->processorContext.hProcessorStopEvent, 0) == WAIT_TIMEOUT) {

@@ -19,7 +19,7 @@ static IXMLDOMElement* g_pRootElement = NULL;
 static BOOL g_bInitialized = FALSE;
 static map<PCTSTR, PCTSTR>* g_pGlobalConfig		= NULL;
 typedef pair<PCTSTR, map<PCTSTR, PCTSTR>*> config_pair;
-static vector<config_pair>* g_pConfigPairContainer;
+static vector<config_pair>* g_pConfigPairContainer = NULL;
 
 static void CleanupRootElement(void);
 
@@ -101,7 +101,7 @@ BOOL I4C3DAnalyzeXML::LoadXML(PCTSTR szXMLUri)
 	if (!PathFileExists(szXMLUri)) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_XML_LOAD), GetLastError(), g_FILE, __LINE__);
 		I4C3DExit(EXIT_FILE_NOT_FOUND);
-		//return FALSE;
+		return FALSE;
 	}
 	g_bInitialized = Initialize(&g_pRootElement, szXMLUri);
 	return g_bInitialized;
@@ -218,8 +218,7 @@ BOOL I4C3DAnalyzeXML::ReadGlobalTag(void)
  */
 BOOL I4C3DAnalyzeXML::ReadSoftsTag(void)
 {
-	if (g_pConfigPairContainer->size() == 0) {
-
+	if (g_pConfigPairContainer->empty()) {
 		IXMLDOMNode* pSofts = NULL;
 		IXMLDOMNodeList* pSoftsList = NULL;
 		if (!GetDOMTree(g_pRootElement, TAG_SOFTS, &pSofts)) {
@@ -235,7 +234,7 @@ BOOL I4C3DAnalyzeXML::ReadSoftsTag(void)
 				if (GetAttribute(pTempNode, TAG_NAME, szSoftwareName, _countof(szSoftwareName))) {
 
 					// globalタグのターゲット名と比較
-					TCHAR* pSoftwareName = new TCHAR[_tcslen(szSoftwareName)+1];
+					TCHAR* pSoftwareName = new TCHAR[_tcslen(szSoftwareName)+1];	// CleanupRootElement()でdelete
 					_tcscpy_s(pSoftwareName, _tcslen(szSoftwareName)+1, szSoftwareName);
 					g_pConfigPairContainer->push_back(config_pair(pSoftwareName, StoreValues(pTempNode, TAG_NAME)));
 					OutputDebugString(szSoftwareName);

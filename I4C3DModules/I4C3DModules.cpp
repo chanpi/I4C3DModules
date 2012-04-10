@@ -60,21 +60,28 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri, HWND hWnd)
 		return TRUE;
 	}
 
+	if (szXMLUri == NULL) {
+		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_FUNCTION_PARAM), GetLastError(), g_FILE, __LINE__);
+		I4C3DExit(EXIT_SYSTEM_ERROR);
+		return FALSE;
+	}
+
 	g_hDriverWnd = hWnd;
 
 	// 必要な初期化
-	ZeroMemory(&g_Core, sizeof(g_Core));
 	ZeroMemory(&g_Context, sizeof(g_Context));
 	g_Context.pAnalyzer = new I4C3DAnalyzeXML();
 	if (g_Context.pAnalyzer == NULL) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_MEMORY_INVALID), GetLastError(), g_FILE, __LINE__);
 		I4C3DStop();
 		I4C3DExit(EXIT_SYSTEM_ERROR);
+		return FALSE;
 	}
 	if (!g_Context.pAnalyzer->LoadXML(szXMLUri)) {
 		LoggingMessage(Log_Error, _T(MESSAGE_ERROR_XML_LOAD), GetLastError(), g_FILE, __LINE__);
 		I4C3DStop();
 		I4C3DExit(EXIT_INVALID_FILE_CONFIGURATION);
+		return FALSE;
 	}
 
 	// 設定ファイルからログレベルを取得
@@ -90,16 +97,16 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri, HWND hWnd)
 		}
 		// 指定なし、上記以外ならLog_Error
 	}
-	LogFileOpenW(SHARED_LOG_FILE_NAME, logLevel);
+	LogFileOpenW(SHARED_LOG_FILE_DIRECTORY, SHARED_LOG_FILE_NAME, logLevel);
 	if (logLevel <= Log_Info) {
-		LogFileOpenA(SHARED_LOGINFO_FILE_NAME, logLevel);	// プロファイル情報書き出しのため
+		LogFileOpenA(SHARED_LOG_FILE_DIRECTORY, SHARED_LOGINFO_FILE_NAME, logLevel);	// プロファイル情報書き出しのため
 	}
 	
 	// 設定ファイルから終端文字を取得
 	char cTermination = '?';
 	PCTSTR szTermination = g_Context.pAnalyzer->GetGlobalValue(TAG_TERMINATION);
 	if (szTermination != NULL) {
-		char cszTermination[5];
+		char cszTermination[5] = {0};
 		if (_tcslen(szTermination) != 1) {
 			LoggingMessage(Log_Error, _T(MESSAGE_ERROR_CFG_TERMCHAR), GetLastError(), g_FILE, __LINE__);
 			szTermination = _T("?");
@@ -116,8 +123,10 @@ BOOL WINAPI I4C3DStart(PCTSTR szXMLUri, HWND hWnd)
 	if (!PrepareTargetController(cTermination)) {
 		I4C3DStop();
 		I4C3DExit(EXIT_SYSTEM_ERROR);
+		return FALSE;
 	}
 
+	g_Context.bIsAlive = FALSE;
 	g_bStarted = g_Core.Start(&g_Context);
 	if (!g_bStarted) {
 		I4C3DStop();
@@ -203,15 +212,22 @@ void DestroyTargetController()
 
 void I4C3DExit(int errorCode)
 {
-	FUNCTYPE ChangeWindowMessageFilter;
+	FUNCTYPE ChangeWindowMessageFilter = NULL;
 	HMODULE dll = LoadLibrary(_T("user32.dll"));
-	ChangeWindowMessageFilter = (FUNCTYPE)GetProcAddress(LoadLibrary(_T("user32.dll")), "ChangeWindowMessageFilter");
-
-	if (ChangeWindowMessageFilter != NULL) {
-		ChangeWindowMessageFilter(MY_I4C3DEXIT, MSGFLT_ADD);
+	if (dll == NULL) {
+		exit(errorCode);
 	}
 
+	ChangeWindowMessageFilter = (FUNCTYPE)GetProcAddress(dll, "ChangeWindowMessageFilter");
+
+	if (ChangeWindowMessageFilter == NULL) {
+		FreeLibrary(dll);
+		exit(errorCode);
+	}
+
+	ChangeWindowMessageFilter(MY_I4C3DEXIT, MSGFLT_ADD);
 	LoggingMessage(Log_Error, _T(MESSAGE_ERROR_UNKNOWN), GetLastError(), g_FILE, __LINE__);
-	//PostQuitMessage(errorCode);
 	PostMessage(g_hDriverWnd, MY_I4C3DEXIT, 0, errorCode);
+
+	FreeLibrary(dll);
 }

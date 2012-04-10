@@ -2,10 +2,12 @@
 #include "I4C3DSoftwareHandler.h"
 #include "I4C3DAccessor.h"
 
-I4C3DSoftwareHandler::I4C3DSoftwareHandler(void)
+I4C3DSoftwareHandler::I4C3DSoftwareHandler(void):
+m_szTargetTitle(NULL), m_uPort(0), m_socketHandler(INVALID_SOCKET)
 {}
 
-I4C3DSoftwareHandler::I4C3DSoftwareHandler(LPCTSTR szTarget, USHORT uPort)
+I4C3DSoftwareHandler::I4C3DSoftwareHandler(LPCTSTR szTarget, USHORT uPort):
+m_socketHandler(INVALID_SOCKET)
 {
 	int len = _tcslen(szTarget);
 	m_szTargetTitle = new TCHAR[len+1];
